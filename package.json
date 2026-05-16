@@ -12,7 +12,20 @@
     "build": "nest build",
     "start": "node dist/main.js",
     "dev": "nest start --watch",
-    "typecheck": "tsc --noEmit"
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "check": "biome check .",
+    "check:fix": "biome check --write .",
+    "typecheck": "tsc --noEmit",
+    "prepare": "node scripts/prepare.mjs"
+  },
+  "lint-staged": {
+    "*.{ts,js,mjs,json,jsonc}": [
+      "biome check --write --no-errors-on-unmatched"
+    ],
+    "prisma/schema.prisma": [
+      "prisma format"
+    ]
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
@@ -22,8 +35,11 @@
     "rxjs": "^7.8.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.15",
     "@nestjs/cli": "^11.0.0",
     "@types/node": "^22.0.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.4",
     "typescript": "^5.5.0"
   }
 }
