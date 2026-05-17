@@ -16,7 +16,7 @@
       "!coverage",
       "!.husky",
       "!prisma/migrations",
-      "!generated"
+      "!src/generated"
     ]
   },
   "linter": {
