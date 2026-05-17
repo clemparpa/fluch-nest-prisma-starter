@@ -32,6 +32,9 @@
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "pg": "^8.20.0",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.0",
     "zod": "^4.4.3"
@@ -40,8 +43,10 @@
     "@biomejs/biome": "^2.4.15",
     "@nestjs/cli": "^11.0.0",
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.20.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.4",
+    "prisma": "^7.8.0",
     "typescript": "^5.5.0"
   }
 }
