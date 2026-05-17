@@ -11,3 +11,9 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+// Modèle pivot pour valider le pipeline DB en S05a — sera supprimé en S05b
+// au profit du schéma better-auth (User/Session/Account/Verification).
+model Ping {
+  id Int @id @default(autoincrement())
+}

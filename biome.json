@@ -9,7 +9,15 @@
     }
   },
   "files": {
-    "includes": ["**", "!dist", "!node_modules", "!coverage", "!.husky", "!prisma/migrations"]
+    "includes": [
+      "**",
+      "!dist",
+      "!node_modules",
+      "!coverage",
+      "!.husky",
+      "!prisma/migrations",
+      "!generated"
+    ]
   },
   "linter": {
     "enabled": true,

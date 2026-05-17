@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: fluch
+      POSTGRES_PASSWORD: fluch
+      POSTGRES_DB: fluch_dev
+    ports: ['5432:5432']
+    # Postgres 18 stores data in a major-version subdirectory of /var/lib/postgresql,
+    # so we mount the parent dir (not /var/lib/postgresql/data as in <=17).
+    volumes: ['pgdata:/var/lib/postgresql']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U fluch']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
