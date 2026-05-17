@@ -31,7 +31,7 @@ Ce template doit pouvoir cohabiter dans un monorepo avec `fluch-react-signals-st
 | DB | Postgres | 16 |
 | Auth | better-auth | latest (^1.0+) |
 | Config | `@nestjs/config` + `zod` | NestJS 11 compatible + Zod 3.x |
-| Logger | `nestjs-pino` + `pino` | latest |
+| Logger | `ConsoleLogger` natif (`@nestjs/common`) | NestJS 11 (`json` + `colors` + `logLevels` natifs depuis v11) |
 | Validation | `class-validator` + `class-transformer` | latest |
 | Sécurité | `helmet`, CORS natif Nest, `csurf` (via better-auth) | latest |
 | Compression | `compression` middleware Express | latest |
@@ -54,7 +54,7 @@ Ce template doit pouvoir cohabiter dans un monorepo avec `fluch-react-signals-st
 3. **Tests = Postgres réel via Testcontainers**. Pas de mocks Prisma. Reason : éviter la divergence mock/prod qui a déjà mordu par le passé.
 4. **Migrations en CI = job séparé**, pas au boot du container. Plus sûr en prod.
 5. **Throttling in-memory** (pas de Redis). Suffisant pour démarrer ; Redis sera ajouté par projet selon scale.
-6. **Logger Pino** : JSON en prod, pretty-print en dev. RequestId injecté automatiquement.
+6. **Logger structuré** : `ConsoleLogger` natif Nest 11 avec `json: true` en prod et `colors: true` en dev. Niveau pilotable via `LOG_LEVEL`. Propagation `req.id` gérée par un `RequestIdInterceptor` (cf. §5.12bis), pas par le logger lui-même.
 7. **Auth = email + password + sessions cookies**. Pas de JWT. Sessions stockées en DB via better-auth.
 8. **Distroless en runtime** : moins de surface d'attaque, image < 200MB, pas de shell embarqué.
 9. **TypeScript strict** : `"strict": true`, `"noUncheckedIndexedAccess": true`, `"exactOptionalPropertyTypes": true`.
@@ -302,7 +302,7 @@ import { NestFactory } from '@nestjs/core'
 import { NestExpressApplication } from '@nestjs/platform-express'
 import { ValidationPipe, VersioningType } from '@nestjs/common'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
-import { Logger } from 'nestjs-pino'
+import { AppLogger } from './logger/app-logger.service'
 import { json } from 'express'
 import helmet from 'helmet'
 import compression from 'compression'
@@ -318,7 +318,7 @@ async function bootstrap() {
     bufferLogs: true,
   })
 
-  app.useLogger(app.get(Logger))
+  app.useLogger(app.get(AppLogger))
   app.set('trust proxy', 1)
   app.use(helmet())
   app.use(compression())
@@ -401,7 +401,7 @@ Brancher dans `ConfigModule.forRoot({ validate: (env) => envSchema.parse(env) })
   - `P2025` (record not found) → 404 Not Found
   - `P2003` (FK constraint failed) → 400 Bad Request
   - Autres `Prisma*Error` → 500 Internal Server Error
-- Logge via Pino avec `{ requestId, userId?, path, method, statusCode, errorName }`
+- Logge via `AppLogger` avec `{ requestId, userId?, path, method, statusCode, errorName }` (le `requestId` est récupéré depuis `req.id` posé par `RequestIdInterceptor` cf. §5.12bis)
 - En production, masque le stack trace dans la réponse client
 - Format de réponse uniforme :
   ```json
@@ -534,7 +534,7 @@ Brancher en `APP_GUARD` provider dans `app.module.ts` pour qu'il soit global.
 
 ### 5.12bis `src/common/interceptors/request-id.interceptor.ts`
 
-Propage le `x-request-id` en header de réponse. Si le client en envoie un, on le réutilise (utile pour cross-tier tracing). Sinon, on prend celui généré par Pino (`genReqId`).
+Propage le `x-request-id` en header de réponse. Si le client en envoie un, on le réutilise (utile pour cross-tier tracing). Sinon, on en génère un avec `crypto.randomUUID()` (Node 22 natif). L'interceptor pose aussi l'ID sur `req.id` pour qu'il soit récupérable depuis le filter et les autres interceptors.
 
 ```ts
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common'
@@ -1120,7 +1120,7 @@ Le développeur doit valider chacun de ces points avant de considérer le templa
 1. `pnpm install` ne sort aucun warning critique
 2. `cp .env.example .env` puis `docker compose -f docker-compose.dev.yml up -d` → postgres healthy
 3. `pnpm prisma migrate dev --name init` → migration initiale créée, tables User/Session/Account/Verification présentes
-4. `pnpm dev` → boot < 3s, log Pino "Application is running on: http://localhost:3000"
+4. `pnpm dev` → boot < 3s, log "Application is running on: http://localhost:3000" via `AppLogger`
 5. `GET http://localhost:3000/v1/health` → 200, JSON `{ status: 'ok', info: { db: { status: 'up' } } }`
 6. **OpenAPI doc** : `GET http://localhost:3000/docs` → Swagger UI en dev ; en prod `NODE_ENV=production pnpm start` → 404. `/docs-json` toujours 200.
 7. **API versioning** : toutes les routes répondent sous `/v1/*` ; `/users/me` (sans préfixe) → 404
@@ -1165,7 +1165,7 @@ Le développeur doit valider chacun de ces points avant de considérer le templa
 - Format exact du `User` model better-auth : vérifier la doc à jour avant de figer le schéma Prisma (§5.13 est un best guess)
 - Préfixe API : tout sous `/api/*` ou les routes auth uniquement sous `/api/auth/*` ? Recommandation : tout sous `/api/*` pour cohérence frontend.
 - Mise à jour automatique de `updatedAt` sur User : via `@updatedAt` Prisma (OK) ou middleware Nest ? Prisma suffit.
-- Logger : faut-il un transport spécifique pour stdout JSON en prod (déjà le défaut Pino) ?
+- ~~Logger : faut-il un transport spécifique pour stdout JSON en prod ?~~ **Tranché** : `ConsoleLogger` natif Nest 11 avec `json: true` en prod, `colors: true` en dev. Pas de dép externe. Cf. §5.6 + S04 dans stories.
 
 ## 12. Sources / références à consulter pendant l'impl
 
@@ -1173,7 +1173,7 @@ Le développeur doit valider chacun de ces points avant de considérer le templa
 - https://www.better-auth.com/docs — config + adapter Prisma
 - https://www.prisma.io/docs — schema, migrate, client
 - https://node.testcontainers.org/modules/postgresql/ — testcontainers postgres
-- https://github.com/iamolegga/nestjs-pino — config logger
+- https://docs.nestjs.com/techniques/logger — `ConsoleLogger` natif (options `json`, `colors`, `logLevels`)
 - https://biomejs.dev/reference/configuration/ — config Biome
 - https://commitlint.js.org/ — conventional commits
 

@@ -80,49 +80,104 @@ Découpage en stories destiné au développeur qui va bootstrapper le template. 
 
 ---
 
-## S04 — Logger Pino structuré
+## S04 — Logger structuré (ConsoleLogger natif)
 
 **Taille** : S
 **Dépendances** : S03
-**Goal** : logs JSON en prod (pour ingestion par agrégateurs), pretty en dev, requestId injecté automatiquement.
+**Goal** : logs JSON en prod (pour ingestion par agrégateurs), colorés pretty en dev, niveau pilotable via `LOG_LEVEL`.
 
 **Tâches**
-- `pnpm add nestjs-pino pino pino-http`
-- `pnpm add -D pino-pretty` (dev seulement)
-- Configurer `LoggerModule.forRootAsync` dans `app.module.ts` :
-  - `level` depuis `LOG_LEVEL` env
-  - `transport: { target: 'pino-pretty' }` en dev, sinon stdout JSON
-  - `genReqId` : générer un ID si pas dans header `x-request-id`
-- Brancher `app.useLogger(app.get(Logger))` dans `main.ts`
+- Pas d'install : `ConsoleLogger` est déjà dans `@nestjs/common` v11
+- `src/logger/app-logger.service.ts` : `AppLogger extends ConsoleLogger`, `@Injectable()`, injecte `ConfigService<Env, true>`, configure `super({ json: isProd, colors: !isProd, logLevels, timestamp: true })`. Mapping `LOG_LEVEL` Pino-style (`trace|debug|info|warn|error`) → `LogLevel[]` Nest cascading (`verbose|debug|log|warn|error|fatal`) via une table interne
+- `src/logger/logger.module.ts` : provide + export `AppLogger`, importé dans `AppModule`
+- Dans `main.ts` : `NestFactory.create(AppModule, { bufferLogs: true })` puis `app.useLogger(app.get(AppLogger))`
 
 **DoD**
-- En dev, `pnpm dev` → logs colorés lisibles
-- En `NODE_ENV=production pnpm start` → logs JSON parseable
-- Chaque ligne de log d'une requête HTTP contient le même `req.id`
-- Le logger est utilisable via injection : `constructor(private readonly logger: PinoLogger) {}`
+- En dev, `pnpm dev` → logs colorisés (ANSI), format natif Nest
+- En `NODE_ENV=production node dist/main.js` → logs JSON parseable (`{"level":"log","pid":...,"timestamp":...,"message":"...","context":"..."}`)
+- `LOG_LEVEL=error` → seuls les niveaux error/fatal apparaissent
+- `AppLogger` injectable et typé : `constructor(private readonly logger: AppLogger) {}` compile
+
+**Note déviation vs spec initiale** : la spec d'origine prescrivait `nestjs-pino + pino + pino-http + pino-pretty`. Depuis Nest 11, le `ConsoleLogger` natif supporte `json: true` + `colors` + `logLevels` configurables — couvre 100 % du besoin "JSON prod / pretty dev / level configurable" sans dépendance externe. Trade-offs vs Pino : perte de perf (~5x sur du très haut débit), pas de child loggers ni redaction natifs, pas de logging HTTP auto. Le logging HTTP par requête + propagation `req.id` sont gérés via interceptors Nest en S06.
 
 ---
 
-## S05 — Module Prisma + schéma initial
+## S05a — DB locale Docker + setup Prisma (pipeline)
 
-**Taille** : M
+**Taille** : XS
 **Dépendances** : S03
-**Goal** : schéma DB en place, client Prisma utilisable via injection, migrations versionnées.
+**Goal** : pipeline DB → migration → Prisma client fonctionnel, validé sur un schéma minimal. Aucun modèle métier encore.
 
 **Tâches**
+- `docker-compose.dev.yml` (cf. spec §5.19) : service postgres seul (image officielle, port 5432, volume nommé, user/db `fluch`)
 - `pnpm add @prisma/client` ; `pnpm add -D prisma`
-- `prisma/schema.prisma` (cf. spec §5.13) — vérifier le format exact attendu par better-auth dans leur doc avant de figer
-- `src/prisma/prisma.service.ts` : `extends PrismaClient`, implémenter `onModuleInit` (await `$connect()`) et `onModuleDestroy` (await `$disconnect()`)
-- `src/prisma/prisma.module.ts` : `@Global()`, provide + export `PrismaService`
-- `prisma/seed.ts` : un user admin dev minimal (créé seulement si `NODE_ENV=development`)
-- Scripts `package.json` : `prisma:generate`, `prisma:migrate`, `prisma:deploy`, `prisma:studio`, `prisma:seed`
-- `docker-compose.dev.yml` (peut être pris d'avance ici plutôt qu'en S14 si besoin de DB locale pour tester) — cf. spec §5.19
+- Scripts `package.json` : `prisma:generate`, `prisma:migrate` (= `prisma migrate dev`), `prisma:deploy` (= `prisma migrate deploy`), `prisma:studio`
+- `prisma/schema.prisma` minimal : `datasource db { provider = "postgresql" url = env("DATABASE_URL") }` + `generator client { provider = "prisma-client-js" }` + un modèle pivot trivial (`model _Ping { id Int @id @default(autoincrement()) }`) juste pour avoir une migration non-vide
 
 **DoD**
-- `pnpm prisma migrate dev --name init` crée la migration initiale et applique
-- Les 4 tables existent dans la DB (`docker exec ... psql -c '\dt'`)
-- `pnpm prisma studio` ouvre l'UI et affiche les tables vides
-- Injection `PrismaService` dans un controller de test fonctionne
+- `docker compose -f docker-compose.dev.yml up -d postgres` → conteneur healthy
+- `pnpm prisma:migrate --name init` → migration initiale créée dans `prisma/migrations/` + appliquée
+- `pnpm prisma:studio` ouvre l'UI sur http://localhost:5555 et affiche la table `_Ping` vide
+- `docker exec ... psql -U fluch -d fluch_dev -c '\dt'` → table `_Ping` + `_prisma_migrations` listées
+
+---
+
+## S05b — Schéma better-auth (4 modèles)
+
+**Taille** : S
+**Dépendances** : S05a
+**Goal** : schéma DB conforme à better-auth, prêt à être utilisé par le module Auth (S07).
+
+**Tâches**
+- Compléter `prisma/schema.prisma` avec les 4 modèles : `User`, `Session`, `Account`, `Verification` (cf. spec §5.13)
+- **Vérifier d'abord la doc better-auth à jour** : les noms de champs (notamment `Account`/`Session`) ont évolué entre versions. Si écart vs §5.13, ajuster le schéma ET fixer la spec dans le même commit
+- Supprimer le modèle `_Ping` de S05a
+- `pnpm prisma:migrate --name better-auth-models` → migration des 4 modèles
+
+**DoD**
+- Les 4 tables `User`, `Session`, `Account`, `Verification` existent (`docker exec ... psql -c '\dt'`)
+- Les contraintes critiques sont en place : `User.email UNIQUE`, `Account.(providerId, providerAccountId) UNIQUE`, `Session.token UNIQUE`, index sur les `userId` FK
+- `prisma format` (via hook lint-staged si présent) ne touche pas le fichier (donc déjà formaté)
+- `pnpm prisma:studio` montre les 4 tables vides
+
+**Risque** : doc better-auth peut diverger de la spec §5.13. Si oui, mettre à jour la spec dans ce même commit.
+
+---
+
+## S05c — PrismaService + PrismaModule global injectables
+
+**Taille** : S
+**Dépendances** : S05a (pas besoin du schéma final pour valider l'injection)
+**Goal** : `PrismaClient` accessible via DI partout, lifecycle propre (connect au boot, disconnect au shutdown).
+
+**Tâches**
+- `src/prisma/prisma.service.ts` : `@Injectable()` class `PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy` ; `async onModuleInit() { await this.$connect() }` ; `async onModuleDestroy() { await this.$disconnect() }`
+- `src/prisma/prisma.module.ts` : `@Global() @Module({ providers: [PrismaService], exports: [PrismaService] })`
+- Importer `PrismaModule` dans `AppModule`
+- `app.enableShutdownHooks()` dans `main.ts` (sinon `onModuleDestroy` ne sera pas appelé sur SIGTERM)
+
+**DoD**
+- `pnpm dev` → log `Prisma Client connected` (debug log) ou aucune erreur de connexion
+- Probe temporaire `src/_tmp_prisma_probe.ts` : controller minimal qui inject `PrismaService` et fait un `$queryRaw\`SELECT 1\`` → compile et retourne le résultat sans erreur
+- `Ctrl+C` sur `pnpm dev` → pas de "unclosed connection" warning (le `$disconnect` a tourné)
+
+---
+
+## S05d — Seed dev (user admin)
+
+**Taille** : XS
+**Dépendances** : S05b, S05c
+**Goal** : pouvoir reset+seed la DB de dev en 1 commande pour itérer rapidement.
+
+**Tâches**
+- `prisma/seed.ts` : si `NODE_ENV !== 'development'` → exit 0 (no-op silencieux) ; sinon `upsert` un user admin dev (email/name/role hardcodés, idempotent)
+- Script `package.json` : `prisma:seed` (= `tsx prisma/seed.ts`) — installer `tsx` en devDep si pas encore présent
+- Bloc `prisma` dans `package.json` : `{ "seed": "tsx prisma/seed.ts" }` (pour que `prisma migrate dev` invoque le seed automatiquement après reset)
+
+**DoD**
+- `pnpm prisma:seed` (avec `NODE_ENV=development`) → user admin créé/updaté en DB, exit 0
+- `pnpm prisma:seed` (avec `NODE_ENV=production`) → exit 0 sans rien faire
+- `pnpm prisma migrate reset --force` → seed exécuté automatiquement après reset
 
 ---
 
@@ -146,9 +201,9 @@ Découpage en stories destiné au développeur qui va bootstrapper le template. 
 
 **DoD**
 - Test unitaire ou e2e du filter : provoquer une `P2002` Prisma → réponse 409 + format correct
-- Logging interceptor visible dans les logs Pino quand on hit un endpoint
+- Logging interceptor visible dans les logs structurés quand on hit un endpoint
 - `curl -H "x-request-id: abc-123" /health` (à valider en S09) → header `x-request-id: abc-123` en réponse
-- Sans header `x-request-id` envoyé, la réponse contient quand même un UUID (généré par Pino)
+- Sans header `x-request-id` envoyé, la réponse contient quand même un UUID (généré par `RequestIdInterceptor` via `crypto.randomUUID()`)
 - `@Public()` placé sur un controller test → permet de bypass le guard (à finaliser en S07)
 - `PaginationDto` valide bien : `?page=-1` → 400, `?limit=200` → 400, `?page=2&limit=50` → OK
 
@@ -157,7 +212,7 @@ Découpage en stories destiné au développeur qui va bootstrapper le template. 
 ## S07 — Module Auth (better-auth)
 
 **Taille** : L
-**Dépendances** : S05, S06
+**Dépendances** : S05b, S05c, S06
 **Goal** : sign-up/sign-in email+password fonctionnels avec sessions cookies, guard global pour protéger les routes par défaut.
 
 **Tâches**
@@ -216,7 +271,7 @@ Découpage en stories destiné au développeur qui va bootstrapper le template. 
 ## S09 — Module Health
 
 **Taille** : S
-**Dépendances** : S05
+**Dépendances** : S05c
 **Goal** : endpoint `/health` consommable par orchestrateurs (k8s, docker, Render, etc.).
 
 **Tâches**
@@ -245,7 +300,7 @@ Découpage en stories destiné au développeur qui va bootstrapper le template. 
 - Enregistrer `RequestIdInterceptor` comme `APP_INTERCEPTOR` global dans `app.module.ts`
 - Swagger : UI montée sur `/docs` seulement si `NODE_ENV !== 'production'` ; `/docs-json` toujours actif (utile pour codegen client typé côté frontend)
 - Versioning : `app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' })`. Décorer le controller Health avec `@Version(VERSION_NEUTRAL)` SI on choisit de garder `/health` non-versionné (sinon il devient `/v1/health`)
-- Vérifier `bufferLogs: true` pour que les logs du boot soient buffés vers Pino
+- Vérifier `bufferLogs: true` pour que les logs du boot soient buffés vers `AppLogger` (déjà ajouté en S04)
 
 **DoD**
 - `pnpm dev` → boot < 3s, log "Application is running on: http://localhost:3000"
@@ -266,7 +321,7 @@ Découpage en stories destiné au développeur qui va bootstrapper le template. 
 ## S11 — Setup testing (Vitest + Testcontainers)
 
 **Taille** : M
-**Dépendances** : S05
+**Dépendances** : S05b, S05c
 **Goal** : infra de tests e2e avec Postgres réel éphémère. Aucun mock DB.
 
 **Tâches**
@@ -314,7 +369,7 @@ Découpage en stories destiné au développeur qui va bootstrapper le template. 
 ## S13 — Dockerfile multi-stage
 
 **Taille** : M
-**Dépendances** : S05, S10
+**Dépendances** : S05c, S10
 **Goal** : image production minimale, prête à déployer.
 
 **Tâches**
@@ -449,7 +504,7 @@ Découpage en stories destiné au développeur qui va bootstrapper le template. 
 S01 → S02 → S03 → S04
 
 **Phase 2 — Persistence (1 jour)**
-S05 (peut commencer en parallèle de S14 pour avoir la DB locale prête)
+S05a → S05b → S05c → S05d (S05c peut être bossé en parallèle de S05b si on accepte un schéma temporaire ; S05d est optionnel pour débloquer S06+)
 
 **Phase 3 — Infrastructure transverse (½ jour)**
 S06
