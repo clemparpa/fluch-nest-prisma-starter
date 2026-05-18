@@ -21,6 +21,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
+    "prisma:seed": "tsx prisma/seed.ts",
+    "prisma:reset": "prisma migrate reset --force && prisma db seed",
     "postinstall": "prisma generate",
     "prepare": "node scripts/prepare.mjs"
   },
@@ -55,6 +57,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^17.0.4",
     "prisma": "^7.8.0",
+    "tsx": "^4.22.1",
     "typescript": "^5.5.0"
   }
 }

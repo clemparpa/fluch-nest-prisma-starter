@@ -57,7 +57,7 @@
   },
   "overrides": [
     {
-      "includes": ["scripts/**"],
+      "includes": ["scripts/**", "prisma/seed.ts"],
       "linter": {
         "rules": {
           "suspicious": {
