@@ -8,6 +8,7 @@ import type { Env } from './config/env.schema'
 import { AppLoggerModule } from './logger/logger.module'
 import { PrismaModule } from './prisma/prisma.module'
 import { PrismaService } from './prisma/prisma.service'
+import { UsersModule } from './users/users.module'
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { PrismaService } from './prisma/prisma.service'
     AppLoggerModule,
     CommonModule,
     PrismaModule,
+    UsersModule,
     AuthModule.forRootAsync({
       imports: [PrismaModule, ConfigModule],
       inject: [PrismaService, ConfigService],

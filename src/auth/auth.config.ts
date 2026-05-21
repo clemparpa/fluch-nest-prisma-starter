@@ -17,6 +17,11 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
       autoSignIn: true,
       minPasswordLength: 12,
     },
+    user: {
+      additionalFields: {
+        role: { type: 'string', defaultValue: 'user', input: false },
+      },
+    },
     session: {
       expiresIn: 60 * 60 * 24 * 7,
       updateAge: 60 * 60 * 24,
