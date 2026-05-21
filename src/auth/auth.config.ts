@@ -1,0 +1,37 @@
+import { betterAuth } from 'better-auth'
+import { prismaAdapter } from 'better-auth/adapters/prisma'
+import type { Env } from '@/config/env.schema'
+import type { PrismaClient } from '@/generated/prisma/client'
+
+type AuthEnv = Pick<Env, 'NODE_ENV' | 'BETTER_AUTH_SECRET' | 'BETTER_AUTH_URL' | 'FRONTEND_URL'>
+
+export function createAuth(prisma: PrismaClient, env: AuthEnv) {
+  const isProd = env.NODE_ENV === 'production'
+  return betterAuth({
+    database: prismaAdapter(prisma, { provider: 'postgresql' }),
+    secret: env.BETTER_AUTH_SECRET,
+    baseURL: env.BETTER_AUTH_URL,
+    trustedOrigins: [env.BETTER_AUTH_URL, env.FRONTEND_URL],
+    emailAndPassword: {
+      enabled: true,
+      autoSignIn: true,
+      minPasswordLength: 12,
+    },
+    session: {
+      expiresIn: 60 * 60 * 24 * 7,
+      updateAge: 60 * 60 * 24,
+      cookieCache: { enabled: true, maxAge: 5 * 60 },
+    },
+    advanced: {
+      cookiePrefix: 'fluch',
+      useSecureCookies: isProd,
+      defaultCookieAttributes: {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: 'lax',
+      },
+    },
+  })
+}
+
+export type Auth = ReturnType<typeof createAuth>
