@@ -268,6 +268,109 @@ Découpage en stories destiné au développeur qui va bootstrapper le template. 
 
 ---
 
+## S8.1 — Pivot validation : Prisma types + `prisma-zod-generator`
+
+**Taille** : M
+**Dépendances** : S08
+**Goal** : remplacer la stack `class-validator` + DTOs hand-written par une stack **Prisma-as-source-of-truth** : types Prisma générés pour les responses, schémas Zod auto-générés depuis Prisma pour la validation runtime des inputs. Une seule source de vérité, plus de drift schéma DB ↔ schémas HTTP.
+
+**Contexte** :
+S08 a livré le module Users avec `class-validator` + `UpdateUserDto` / `UserResponseDto` / `PaginationDto` + `@nestjs/swagger` `@ApiProperty`. C'est conventionnel mais introduit :
+- 3 stacks de typage à maintenir (Prisma, class-validator, Swagger decorators) ;
+- du `@ApiProperty()` à dupliquer manuellement à chaque champ ;
+- un risque de drift quand un champ Prisma bouge sans qu'on touche le DTO ;
+- des DTOs "response" pures-recopies des types Prisma (`UserResponseDto` = `Pick<User, ...>`).
+
+Zod est déjà utilisé pour `env.schema.ts` (S04). Standardiser sur Zod via `prisma-zod-generator` aligne tout l'input validation runtime sur la même lib et fait des schémas Prisma la source unique.
+
+**Décisions techniques arrêtées (instructions détaillées par l'user au démarrage de la story)**
+- Pipe de validation global : **`nestjs-zod`** (`ZodValidationPipe`). Remplace `createValidationPipe()` (factory `class-validator` actuelle).
+- Le détail du wiring `nestjs-zod` (use-global pipe vs `APP_PIPE` provider, gestion des erreurs, eventuelle config Swagger `nestjs-zod/zod-dto`) sera précisé par l'user à l'ouverture de la story — ne pas anticiper les choix d'implémentation ici.
+
+**Tâches**
+- Installer : `pnpm add zod nestjs-zod` ; `pnpm add -D prisma-zod-generator`
+- Ajouter le generator dans `prisma/schema.prisma` :
+  ```prisma
+  generator zod {
+    provider = "prisma-zod-generator"
+    output   = "../src/generated/zod"
+  }
+  ```
+  Puis `pnpm prisma generate` → schémas Zod auto-générés (`UserUpdateInputSchema`, `UserCreateInputSchema`, etc.)
+- Câbler le `ZodValidationPipe` de `nestjs-zod` (remplace `createValidationPipe()` dans `src/main.ts`)
+- Supprimer `src/users/dto/user-response.dto.ts` ; les controllers retournent `Pick<User, 'id' | 'email' | 'name' | 'image' | 'role' | 'createdAt'>` (type Prisma direct)
+- Supprimer `src/users/dto/update-user.dto.ts` ; le `@Body()` utilise un schéma Zod custom (subset de `UserUpdateInputSchema`, sans `email`/`role`/`emailVerified`)
+- Refacto `PaginationDto` → schéma Zod (`src/common/dto/pagination.schema.ts`)
+- Supprimer `class-validator`, `class-transformer`, `@nestjs/swagger`-decorators de `package.json` (vérifier qu'aucun import résiduel ne casse — S10 réintroduira Swagger via `nestjs-zod`'s `@nestjs/swagger` integration si besoin)
+- Supprimer `createValidationPipe()` (`src/common/pipes/validation-pipe.factory.ts`) si plus utilisée
+- Mettre à jour la note Biome (`useImportType`) : les schémas Zod sont des constantes, pas des classes — donc plus de problème "import type vs value" pour les DTOs
+
+**DoD**
+- `pnpm typecheck` → 0 erreur
+- `pnpm check` → 0 erreur
+- `pnpm dev` → boot OK
+- `PATCH /users/me` `{"email":"x@x.com"}` → 400 (Zod rejette champ non-listé, équivalent `forbidNonWhitelisted`)
+- `PATCH /users/me` `{"name":""}` → 400 message Zod clair (`name: String must contain at least 1 character(s)`)
+- `GET /users?limit=200` → 400 (Zod `max(100)`)
+- `package.json` ne contient plus `class-validator` ni `class-transformer`
+- `src/generated/zod/` contient un schéma par modèle Prisma, ré-généré à chaque `prisma generate`
+- (Régression S08) Tous les DoD curl de S08 passent toujours
+
+**Hors-scope**
+- Pas de génération de client typé front depuis les schémas Zod (S08 livre les types Prisma + schémas Zod côté backend ; le partage frontend est une décision séparée)
+- Pas d'intégration `nestjs-zod` ↔ `@nestjs/swagger` (déléguée à S10 quand Swagger sera wiré)
+
+---
+
+## S8.2 — Pivot tests : vitest + supertest contre DB dev
+
+**Taille** : M
+**Dépendances** : S08, S8.1
+**Goal** : remplacer les smoke curl tests par une suite e2e reproductible. Setup minimal `vitest` + `supertest` qui hit la DB dev (sans Testcontainers, ça vient en S11). Chaque story à partir de S09 ship avec ses propres tests.
+
+**Contexte** :
+Les stories S07, S08, S8.1 ont chacune été validées par ~10 commandes `curl` manuelles. C'est non-reproductible, sensible à l'état DB, et ne survit pas à un refactor. Décision prise post-S08 : on n'attend pas S11 pour avoir un harness. On démarre minimal (Vitest + supertest contre DB dev) et S11 ajoutera juste Testcontainers pour l'isolation par-test.
+
+**Tâches**
+- Installer : `pnpm add -D vitest @vitest/coverage-v8 supertest @types/supertest`
+- `vitest.config.ts` à la racine : preset NestJS-compatible, alias `@/`, `pool: 'forks'`, timeout 10s
+- `test/setup.ts` : crée une `INestApplication` une fois par run, attaque la DB dev locale
+- `test/e2e/helpers/auth.ts` : helpers `signUpAndGetCookie(app, email, password, name)` + `signInAndGetCookie(app, email, password)` + `resetTestUsers(prisma)` (cleanup des users de test, garde l'admin seed)
+- `test/e2e/users.e2e.spec.ts` :
+  - `GET /users/me` sans cookie → 401
+  - `GET /users/me` avec cookie lambda → 200, shape exact
+  - `GET /users/:id` lambda → autre user → 403
+  - `GET /users/:id` admin → autre user → 200
+  - `PATCH /users/me` payload valide → 200
+  - `PATCH /users/me` `{email:'x'}` → 400 (whitelist Zod)
+  - `PATCH /users/me` `{name:''}` → 400 (MinLength Zod)
+  - `GET /users` lambda → 403
+  - `GET /users?limit=10` admin → shape paginé
+  - `GET /users?limit=200` → 400
+  - `GET /users/invalid-id` → 404
+- `test/e2e/auth.e2e.spec.ts` :
+  - sign-up valide → 200 + cookie `fluch.session_token`
+  - sign-up password < 12 chars → 400
+  - sign-in correct → 200 + cookie
+  - sign-in faux password → 401
+  - `GET /api/auth/get-session` avec cookie → 200 + JSON session
+- Scripts `package.json` : `"test": "vitest run"`, `"test:watch": "vitest"`, `"test:cov": "vitest run --coverage"`
+- README : section "Tests" avec les commandes + note "DB dev doit tourner"
+
+**DoD**
+- `pnpm test` → tous les specs verts, durée < 15s
+- Le run ne nécessite **pas** Docker au-delà de la DB Postgres dev déjà running
+- Un `prisma migrate reset` puis `pnpm test` re-passe (la suite est self-contained — chaque test crée ses propres users)
+- `pnpm test:cov` → couverture > 75% sur `src/users/**` et `src/auth/**`
+- Modifier `src/users/users.controller.ts` (ex: remplacer `me.role !== 'admin'` par `me.role === 'admin'`) → `pnpm test` rouge (régressions détectées)
+
+**Hors-scope**
+- Pas de Testcontainers (S11 ajoute l'isolation par test)
+- Pas de tests unitaires (services testés via e2e suffisent pour ce starter ; le pattern unit-test viendra avec les modules métier downstream)
+- Pas de CI hookup encore (S15)
+
+---
+
 ## S09 — Module Health
 
 **Taille** : S
@@ -510,10 +613,10 @@ S05a → S05b → S05c → S05d (S05c peut être bossé en parallèle de S05b si
 S06
 
 **Phase 4 — Domaine (1,5 jour, séquentiel)**
-S07 → S08 → S09 → S10
+S07 → S08 → S8.1 → S8.2 → S09 → S10
 
 **Phase 5 — Tests (1 jour, séquentiel)**
-S11 → S12
+S11 → S12 *(S8.2 a déjà posé le harness vitest+supertest ; S11 ajoute Testcontainers pour l'isolation par-test, S12 fait du back-fill auth/users si non-couvert)*
 
 **Phase 6 — Packaging (peut se paralléliser sur ~1 jour)**
 S13 ‖ S14 ‖ S15
