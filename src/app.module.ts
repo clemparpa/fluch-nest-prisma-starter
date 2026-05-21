@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
 import { AuthModule } from '@thallesp/nestjs-better-auth'
 import { createAuth } from './auth'
+import { CommonModule } from './common/common.module'
 import { ConfigModule } from './config/config.module'
 import { AppLoggerModule } from './logger/logger.module'
 import { PrismaModule } from './prisma/prisma.module'
@@ -10,6 +11,7 @@ import { PrismaService } from './prisma/prisma.service'
   imports: [
     ConfigModule,
     AppLoggerModule,
+    CommonModule,
     PrismaModule,
     AuthModule.forRootAsync({
       inject: [PrismaService],
