@@ -1,13 +1,14 @@
 import { Body, Controller, ForbiddenException, Get, Param, Patch, Query } from '@nestjs/common'
 import { ApiTags } from '@nestjs/swagger'
+import { ZodSerializerDto } from 'nestjs-zod'
 import { CurrentUser, type CurrentUserPayload } from '@/common/decorators/current-user.decorator'
-import { type PaginatedResponseDto, paginate } from '@/common/dto/paginated-response.dto'
+import { paginate } from '@/common/dto/paginated-response.dto'
 // biome-ignore lint/style/useImportType: needed at runtime for Nest DI (emitDecoratorMetadata)
 import { PaginationDto } from '@/common/dto/pagination.dto'
-import type { User } from '@/generated/prisma/client'
+import { PaginatedUsersDto } from './dto/paginated-users.dto'
 // biome-ignore lint/style/useImportType: needed at runtime for Nest DI (emitDecoratorMetadata)
 import { UpdateUserDto } from './dto/update-user.dto'
-import type { UserResponseDto } from './dto/user-response.dto'
+import { UserResponseDto } from './dto/user-response.dto'
 // biome-ignore lint/style/useImportType: needed at runtime for Nest DI (emitDecoratorMetadata)
 import { UsersService } from './users.service'
 
@@ -17,47 +18,31 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get('me')
-  async me(@CurrentUser() me: CurrentUserPayload): Promise<UserResponseDto> {
-    return toDto(await this.usersService.findById(me.id))
+  @ZodSerializerDto(UserResponseDto)
+  me(@CurrentUser() me: CurrentUserPayload) {
+    return this.usersService.findById(me.id)
   }
 
   @Patch('me')
-  async updateMe(
-    @CurrentUser() me: CurrentUserPayload,
-    @Body() dto: UpdateUserDto,
-  ): Promise<UserResponseDto> {
-    return toDto(await this.usersService.updateMe(me.id, dto))
+  @ZodSerializerDto(UserResponseDto)
+  updateMe(@CurrentUser() me: CurrentUserPayload, @Body() dto: UpdateUserDto) {
+    return this.usersService.updateMe(me.id, dto)
   }
 
   @Get(':id')
-  async findById(
-    @CurrentUser() me: CurrentUserPayload,
-    @Param('id') id: string,
-  ): Promise<UserResponseDto> {
+  @ZodSerializerDto(UserResponseDto)
+  findById(@CurrentUser() me: CurrentUserPayload, @Param('id') id: string) {
     if (me.role !== 'admin' && me.id !== id) {
       throw new ForbiddenException()
     }
-    return toDto(await this.usersService.findById(id))
+    return this.usersService.findById(id)
   }
 
   @Get()
-  async list(
-    @CurrentUser() me: CurrentUserPayload,
-    @Query() pagination: PaginationDto,
-  ): Promise<PaginatedResponseDto<UserResponseDto>> {
+  @ZodSerializerDto(PaginatedUsersDto)
+  async list(@CurrentUser() me: CurrentUserPayload, @Query() pagination: PaginationDto) {
     if (me.role !== 'admin') throw new ForbiddenException()
     const { items, total } = await this.usersService.findMany(pagination)
-    return paginate(items.map(toDto), total, pagination.page, pagination.limit)
-  }
-}
-
-function toDto(u: User): UserResponseDto {
-  return {
-    id: u.id,
-    email: u.email,
-    name: u.name,
-    image: u.image,
-    role: u.role,
-    createdAt: u.createdAt,
+    return paginate(items, total, pagination.page, pagination.limit)
   }
 }

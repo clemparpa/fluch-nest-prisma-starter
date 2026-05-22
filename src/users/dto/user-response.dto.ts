@@ -1,21 +1,13 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import { createZodDto } from 'nestjs-zod'
+import { UserSchema } from '@/generated/zod/schemas/models/User.schema'
 
-export class UserResponseDto {
-  @ApiProperty()
-  id!: string
+export const UserResponseSchema = UserSchema.pick({
+  id: true,
+  email: true,
+  name: true,
+  image: true,
+  role: true,
+  createdAt: true,
+})
 
-  @ApiProperty()
-  email!: string
-
-  @ApiProperty()
-  name!: string
-
-  @ApiPropertyOptional({ nullable: true })
-  image!: string | null
-
-  @ApiProperty({ example: 'user' })
-  role!: string
-
-  @ApiProperty()
-  createdAt!: Date
-}
+export class UserResponseDto extends createZodDto(UserResponseSchema) {}

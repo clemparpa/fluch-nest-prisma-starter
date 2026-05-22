@@ -2,3 +2,4 @@ allowBuilds:
   '@nestjs/core': false
   '@scarf/scarf': false
   esbuild: true
+  prisma-zod-generator: false

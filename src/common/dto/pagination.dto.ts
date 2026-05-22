@@ -1,20 +1,9 @@
-import { ApiPropertyOptional } from '@nestjs/swagger'
-import { Type } from 'class-transformer'
-import { IsInt, IsOptional, Max, Min } from 'class-validator'
+import { createZodDto } from 'nestjs-zod'
+import { z } from 'zod'
 
-export class PaginationDto {
-  @ApiPropertyOptional({ default: 1, minimum: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page: number = 1
+export const PaginationSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+})
 
-  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit: number = 20
-}
+export class PaginationDto extends createZodDto(PaginationSchema) {}

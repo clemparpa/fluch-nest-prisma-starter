@@ -6,6 +6,8 @@ import {
   HttpStatus,
 } from '@nestjs/common'
 import type { Request, Response } from 'express'
+import { ZodSerializationException, ZodValidationException } from 'nestjs-zod'
+import type { ZodError } from 'zod'
 import { Prisma } from '@/generated/prisma/client'
 // biome-ignore lint/style/useImportType: needed at runtime for Nest DI (emitDecoratorMetadata)
 import { AppLogger } from '../../logger/app-logger.service'
@@ -15,6 +17,7 @@ interface ErrorPayload {
   message: string
   error: string
   requestId?: string
+  issues?: unknown[]
 }
 
 interface ResolvedError {
@@ -22,6 +25,7 @@ interface ResolvedError {
   message: string
   error: string
   errorName: string
+  issues?: unknown[]
 }
 
 const PRISMA_CODE_MAP: Record<string, { status: number; message: string }> = {
@@ -49,10 +53,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const res = httpCtx.getResponse<Response>()
     const requestId = req.id
 
-    const { statusCode, message, error, errorName } = this.resolve(exception)
+    const { statusCode, message, error, errorName, issues } = this.resolve(exception)
 
     const payload: ErrorPayload = { statusCode, message, error }
     if (requestId) payload.requestId = requestId
+    if (issues) payload.issues = issues
 
     this.logger.error(
       `${req.method} ${req.originalUrl} → ${statusCode} ${errorName}: ${message}`,
@@ -64,6 +69,27 @@ export class AllExceptionsFilter implements ExceptionFilter {
   }
 
   private resolve(exception: unknown): ResolvedError {
+    if (exception instanceof ZodValidationException) {
+      const zodError = exception.getZodError() as ZodError
+      return {
+        statusCode: HttpStatus.BAD_REQUEST,
+        message: 'Validation failed',
+        error: this.statusText(HttpStatus.BAD_REQUEST),
+        errorName: exception.name,
+        issues: zodError.issues,
+      }
+    }
+
+    if (exception instanceof ZodSerializationException) {
+      const zodError = exception.getZodError() as ZodError
+      this.logger.error(
+        `[ZodSerialization] Response shape did not match schema: ${zodError.message}`,
+        this.isProd ? undefined : exception.stack,
+        'ExceptionFilter',
+      )
+      return this.internalError(exception)
+    }
+
     if (exception instanceof HttpException) {
       const status = exception.getStatus()
       const resp = exception.getResponse()
