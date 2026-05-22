@@ -2,20 +2,24 @@
 
 Spec implémentable destinée au développeur qui va bootstrapper le repo. Toutes les décisions de stack et de design sont **lockées** sauf mention explicite "ouvert". Le développeur ne doit pas avoir à choisir entre alternatives — la spec tranche partout.
 
-Repo cible : `fluch-nest-starter` (à créer côté user). Layout : à plat (pas de `apps/api/` au démarrage). Le README expliquera comment relocaliser pour intégration monorepo.
+Repo cible : `fluch-nest-starter` (monorepo pnpm). Layout : `apps/api/` + `packages/api-contracts/` + `packages/tsconfig/` + `packages/biome-config/`. Conçu pour accueillir un `apps/web/` ultérieurement sans refactor structurel.
 
 ## 1. Objectif
 
 Template backend "tout-terrain" Node.js, prêt à brancher sur n'importe quel projet, production-ready dès le clone :
 
-- API HTTP REST avec NestJS bien structuré (modules, DTOs, filters, interceptors, guards)
-- Persistence Postgres via Prisma
+- API HTTP REST avec NestJS bien structuré (modules, contrats TS-Rest, filters, interceptors, guards)
+- API type-safe end-to-end via TS-Rest (contrats partagés `packages/api-contracts/`)
+- Persistence Postgres via Prisma 7
+- Multi-tenant isolation native via Prisma Client Extension + AsyncLocalStorage
+- RBAC complet via better-auth `createAccessControl` + plugins `organization` & `admin`
+- Hooks better-auth découplés via `@nestjs/event-emitter`
 - Authentification email/password + sessions via better-auth (sans OAuth providers pré-câblés)
 - Observabilité minimale : logger structuré JSON, health check
-- Tests e2e avec Postgres réel (Testcontainers) — pas de mocks DB
+- Tests e2e avec Postgres réel — pas de mocks DB
 - Tooling complet : lint, format, typecheck, audit, pre-commit
 - Image Docker prête à brancher sur un docker-compose multi-services
-- Pattern **standalone-first / monorepo-safe** : tourne seul, et s'absorbe dans un monorepo sans casser
+- Architecture **monorepo pnpm** : back + futurs front + packages partagés cohabitent nativement
 
 Ce template doit pouvoir cohabiter dans un monorepo avec `fluch-react-signals-starter` (template frontend) sans que les hooks Husky ou les workflows GitHub Actions se collisionnent. Voir §10.
 
@@ -27,19 +31,23 @@ Ce template doit pouvoir cohabiter dans un monorepo avec `fluch-react-signals-st
 | Runtime | Node.js | 22 LTS |
 | Package manager | pnpm | 9.x |
 | Language | TypeScript | ^5.5 (strict mode) |
-| ORM | Prisma | ^6.0 |
+| ORM | Prisma | ^7.0 |
 | DB | Postgres | 16 |
 | Auth | better-auth | latest (^1.0+) |
+| Auth integration | `@thallesp/nestjs-better-auth` + plugins (`organization`, `admin`) | latest |
+| API routing | NestJS + `@ts-rest/nest` (contrats partagés `packages/api-contracts/`) | `@ts-rest/*` ^3.x |
+| Multi-tenant | Prisma Client Extension + `node:async_hooks` (ALS) | natif Node 22 / Prisma 7 |
+| Events | `@nestjs/event-emitter` | ^2.x |
 | Config | `@nestjs/config` + `zod` | NestJS 11 compatible + Zod 3.x |
 | Logger | `ConsoleLogger` natif (`@nestjs/common`) | NestJS 11 (`json` + `colors` + `logLevels` natifs depuis v11) |
-| Validation | `class-validator` + `class-transformer` | latest |
+| Validation | Zod (via `nestjs-zod` + `prisma-zod-generator`) | Zod ^3.x, nestjs-zod ^4.x |
 | Sécurité | `helmet`, CORS natif Nest, `csurf` (via better-auth) | latest |
 | Compression | `compression` middleware Express | latest |
-| OpenAPI doc | `@nestjs/swagger` | latest |
+| OpenAPI doc | `@ts-rest/open-api` (généré depuis les contrats TS-Rest) | ^3.x |
 | Throttling | `@nestjs/throttler` | latest (in-memory v1) |
 | Health | `@nestjs/terminus` | latest |
 | Auto-updates | Dependabot (GitHub natif) | — |
-| Testing | Vitest + Testcontainers + Supertest | Vitest 2.x, `@testcontainers/postgresql` |
+| Testing | Vitest + Supertest (+ Testcontainers en S8.11) | Vitest ^3.0, `unplugin-swc`, `@testcontainers/postgresql` |
 | Lint + Format | Biome | ^1.9 (rules `nursery` activées pour `noFloatingPromises`) |
 | Pre-commit | Husky + lint-staged | latest |
 | CI | GitHub Actions | — |
@@ -49,7 +57,7 @@ Ce template doit pouvoir cohabiter dans un monorepo avec `fluch-react-signals-st
 
 ## 3. Décisions de design lockées
 
-1. **Layout à plat** : `src/`, `prisma/`, `test/` au root du repo. Pas de `apps/api/` au démarrage. Documenter dans le README comment déplacer pour monorepo.
+1. **Layout monorepo pnpm** : `apps/api/` pour le back, `packages/api-contracts/` pour les contrats TS-Rest partagés, `packages/tsconfig/` et `packages/biome-config/` pour la config partagée. Aucun chemin racine `src/*` n'est utilisé pour du code applicatif.
 2. **OAuth providers NON câblés en v1** : better-auth les supporte natif, à activer par projet selon besoins.
 3. **Tests = Postgres réel via Testcontainers**. Pas de mocks Prisma. Reason : éviter la divergence mock/prod qui a déjà mordu par le passé.
 4. **Migrations en CI = job séparé**, pas au boot du container. Plus sûr en prod.
@@ -73,101 +81,129 @@ Ce template doit pouvoir cohabiter dans un monorepo avec `fluch-react-signals-st
 22. **Migration strategy** : `prisma migrate deploy` exécuté en job CI dédié (avant le deploy de l'image), pas dans le container au boot. Plus de détails §13.
 23. **Request-id propagé en header de réponse** (`x-request-id`). Si le client en envoie un, on le réutilise ; sinon, on en génère un. Permet le tracing cross-tier.
 24. **Sentry placeholder dans `main.ts`** : `if (env.SENTRY_DSN) Sentry.init(...)`. Pas de provider câblé, mais le plumbing est là — activable sans refactor.
+25. **API routing via TS-Rest** (`@ts-rest/nest`). Tous les modules métier exposent un contrat dans `packages/api-contracts/`. Les controllers utilisent `@TsRestHandler(contract.xxx)` + `tsRestHandler()`. Préserve REST standard (clients non-TS, OpenAPI, webhooks).
+26. **Validation runtime via Zod** (auto-généré depuis Prisma par `prisma-zod-generator`). Pipe global `ZodValidationPipe` de `nestjs-zod`. Plus de `class-validator`/`class-transformer`.
+27. **Multi-tenant isolation par défaut** via Prisma Client Extension + `AsyncLocalStorage`. Tout modèle avec colonne `organizationId` (détecté runtime via `Prisma.dmmf`) voit son `where` ou `data` automatiquement augmenté. Bypass possible **uniquement** via `runAsAdmin()` ou injection explicite de `UnsafePrismaService`. Lint rule bloque l'injection accidentelle. Cf. [fluch-nest-starter-tenant-extension.md](fluch-nest-starter-tenant-extension.md).
+28. **RBAC via better-auth** : `createAccessControl` définit les statements + roles, branchés sur les plugins `organization` et `admin`. Décorateurs `@Roles`/`@OrgRoles`/`@UserHasPermission`/`@MemberHasPermission` (via `@thallesp/nestjs-better-auth`). **Séparation system/org volontaire** (anti privilege-escalation).
+29. **Hooks better-auth découplés** via `@nestjs/event-emitter`. Un seul `@AfterCreate('user')` qui emit `user.created`, N listeners dans `auth/listeners/*.ts`. Pattern pub/sub Nest classique.
 
 ## 4. Structure du repo
 
-```
+```text
 fluch-nest-starter/
 ├── .github/
 │   ├── workflows/
-│   │   ├── ci-api.yml              # lint + test + build, paths-filtered
-│   │   └── audit.yml               # pnpm audit hebdo + sur PR
-│   ├── dependabot.yml              # auto-updates npm + GH Actions + Docker
-│   ├── CODEOWNERS                  # règles de review
+│   │   ├── ci-api.yml                  # paths filter apps/api + packages partagés
+│   │   ├── ci-contracts.yml            # paths filter packages/api-contracts (build + typecheck)
+│   │   └── audit.yml                   # pnpm audit hebdo + sur PR
+│   ├── dependabot.yml                  # 4 blocs npm : root + apps/api + packages/api-contracts + packages/tsconfig
+│   ├── CODEOWNERS
 │   └── PULL_REQUEST_TEMPLATE.md
 ├── .husky/
-│   ├── pre-commit                  # 1 ligne : pnpm exec lint-staged
-│   ├── commit-msg                  # commitlint -e
-│   └── pre-push                    # pnpm typecheck && pnpm test
+│   ├── pre-commit                      # 1 ligne : pnpm exec lint-staged (racine)
+│   ├── commit-msg                      # commitlint -e
+│   └── pre-push                        # pnpm typecheck && pnpm test
 ├── .vscode/
-│   ├── settings.json               # format on save, Biome comme formatter
-│   └── extensions.json             # recommandations Biome, Prisma
-├── docker/
-│   └── Dockerfile                  # multi-stage : deps → build → distroless
-├── prisma/
-│   ├── schema.prisma               # User + Session + Account + Verification
-│   ├── migrations/                 # créé par `prisma migrate dev` initial
-│   └── seed.ts                     # seed minimal (admin user dev)
-├── src/
-│   ├── main.ts                     # bootstrap
-│   ├── app.module.ts               # racine, glue des modules
-│   ├── config/
-│   │   ├── env.schema.ts           # Zod schema validation process.env
-│   │   └── config.module.ts        # @nestjs/config + validation
-│   ├── common/
-│   │   ├── filters/
-│   │   │   └── all-exceptions.filter.ts
-│   │   ├── interceptors/
-│   │   │   ├── logging.interceptor.ts
-│   │   │   ├── timeout.interceptor.ts
-│   │   │   └── request-id.interceptor.ts   # propage x-request-id en réponse
-│   │   ├── pipes/
-│   │   │   └── validation-pipe.factory.ts
-│   │   ├── decorators/
-│   │   │   ├── current-user.decorator.ts
-│   │   │   ├── public.decorator.ts
-│   │   │   └── api-paginated.decorator.ts  # combine ApiOkResponse + type wrapper
-│   │   ├── dto/
-│   │   │   ├── pagination.dto.ts            # PaginationDto (page, limit)
-│   │   │   └── paginated-response.dto.ts    # { items, total, page, limit }
-│   │   └── guards/
-│   │       └── auth.guard.ts       # vérifie session better-auth
-│   ├── observability/
-│   │   └── sentry.ts               # placeholder : init Sentry si SENTRY_DSN présent
-│   ├── prisma/
-│   │   ├── prisma.module.ts        # global module
-│   │   └── prisma.service.ts       # extends PrismaClient + onModuleInit/Destroy
-│   ├── auth/
-│   │   ├── auth.module.ts
-│   │   ├── auth.controller.ts      # @All('auth/*'), mount better-auth handler
-│   │   ├── auth.service.ts         # encapsule l'instance betterAuth({...})
-│   │   ├── auth.config.ts          # config better-auth (adapter Prisma, options)
-│   │   └── http-adapter.ts         # toWebRequest + sendNodeResponse helpers
-│   ├── users/
-│   │   ├── users.module.ts
-│   │   ├── users.controller.ts     # GET /users/me, GET /users/:id
-│   │   ├── users.service.ts
-│   │   └── dto/
-│   │       ├── update-user.dto.ts
-│   │       └── user-response.dto.ts
-│   └── health/
-│       ├── health.module.ts
-│       └── health.controller.ts    # @nestjs/terminus : db + memory
-├── test/
-│   ├── setup.ts                    # globalSetup Vitest → Testcontainers postgres
-│   ├── helpers/
-│   │   ├── test-app.ts             # bootstrap NestJS testing module + DB réelle
-│   │   └── reset-db.ts             # TRUNCATE entre tests, séquence ré-init
-│   └── e2e/
-│       ├── auth.e2e.spec.ts        # sign-up, sign-in, /users/me avec cookie
-│       ├── users.e2e.spec.ts
-│       └── health.e2e.spec.ts
-├── .dockerignore
-├── .editorconfig                   # défauts pour éditeurs sans plugin Biome
-├── .env.example
-├── .gitignore
-├── .nvmrc                          # "22"
-├── biome.json                      # config unique lint + format
-├── commitlint.config.mjs           # config Conventional Commits
-├── docker-compose.dev.yml          # postgres 16 + adminer (UI :8080)
-├── LICENSE                         # MIT par défaut
-├── CONTRIBUTING.md                 # convention commits, branch model, PR flow
-├── package.json
+├── apps/
+│   └── api/
+│       ├── prisma/
+│       │   ├── schema.prisma           # User, Session, Account, Verification, Organization, Member, Invitation, Post
+│       │   ├── seed.ts
+│       │   └── migrations/
+│       ├── src/
+│       │   ├── main.ts
+│       │   ├── app.module.ts
+│       │   ├── config/
+│       │   │   ├── env.schema.ts
+│       │   │   └── config.module.ts
+│       │   ├── common/
+│       │   │   ├── decorators/
+│       │   │   │   ├── current-user.decorator.ts
+│       │   │   │   ├── public.decorator.ts
+│       │   │   │   └── requires-org.decorator.ts        # NEW S8.6
+│       │   │   ├── filters/
+│       │   │   ├── interceptors/
+│       │   │   └── guards/
+│       │   ├── prisma/
+│       │   │   ├── prisma.module.ts                     # provider PRISMA + InjectPrisma
+│       │   │   ├── unsafe-prisma.service.ts             # ex-PrismaService renommé S8.6
+│       │   │   └── tenant-extension.ts                  # NEW S8.6
+│       │   ├── tenant/
+│       │   │   ├── tenant.storage.ts                    # ALS + runAsAdmin
+│       │   │   └── tenant.interceptor.ts                # APP_INTERCEPTOR global
+│       │   ├── auth/
+│       │   │   ├── auth.module.ts
+│       │   │   ├── auth.controller.ts
+│       │   │   ├── auth.service.ts
+│       │   │   ├── auth.config.ts                       # + plugins organization, admin
+│       │   │   ├── permissions.ts                       # createAccessControl + roles
+│       │   │   ├── events.ts                            # types des events Nest
+│       │   │   ├── http-adapter.ts
+│       │   │   ├── hooks/
+│       │   │   │   └── user-created.hook.ts             # @AfterCreate → emit user.created
+│       │   │   └── listeners/
+│       │   │       └── create-default-org.listener.ts   # @OnEvent('user.created')
+│       │   ├── users/                                   # refacto TS-Rest en S8.4
+│       │   │   ├── users.module.ts
+│       │   │   ├── users.controller.ts                  # @TsRestHandler(usersContract.xxx)
+│       │   │   └── users.service.ts
+│       │   ├── posts/                                   # NEW S8.8 - module exemple tenant-scoped
+│       │   │   ├── posts.module.ts
+│       │   │   ├── posts.controller.ts                  # @RequiresOrg + permissions
+│       │   │   └── posts.service.ts                     # @InjectPrisma + ownership
+│       │   ├── observability/
+│       │   │   └── sentry.ts
+│       │   └── health/
+│       ├── test/
+│       │   ├── setup.ts                                 # bootstrap unique INestApplication (S8.2)
+│       │   ├── tsconfig.json
+│       │   ├── unit/
+│       │   │   └── tenant-extension.spec.ts            # battle-tested S8.6
+│       │   └── e2e/
+│       │       ├── auth.e2e.spec.ts
+│       │       ├── auth-rbac.e2e.spec.ts                # S8.5
+│       │       ├── auth-hooks.e2e.spec.ts               # S8.7
+│       │       ├── users.e2e.spec.ts
+│       │       ├── tenant-isolation.e2e.spec.ts         # S8.6
+│       │       ├── posts.e2e.spec.ts                    # S8.8
+│       │       └── health.e2e.spec.ts                   # S09
+│       ├── docker/Dockerfile
+│       ├── package.json                                 # name: @fluch/api
+│       ├── tsconfig.json                                # extends @fluch/tsconfig/api
+│       ├── tsconfig.build.json
+│       ├── vitest.config.ts
+│       └── nest-cli.json
+├── packages/
+│   ├── api-contracts/
+│   │   ├── src/
+│   │   │   ├── users/
+│   │   │   │   ├── contract.ts                          # TS-Rest contract
+│   │   │   │   └── schemas.ts                           # Zod schemas
+│   │   │   ├── posts/
+│   │   │   │   ├── contract.ts
+│   │   │   │   └── schemas.ts
+│   │   │   ├── common/
+│   │   │   │   └── pagination.schema.ts                 # PaginationSchema Zod réutilisable
+│   │   │   └── index.ts                                 # barrel export
+│   │   ├── package.json                                 # name: @fluch/api-contracts
+│   │   └── tsconfig.json
+│   ├── tsconfig/
+│   │   ├── base.json
+│   │   ├── api.json                                     # extends base, + decorators metadata
+│   │   └── package.json                                 # name: @fluch/tsconfig
+│   └── biome-config/
+│       ├── biome.json
+│       └── package.json                                 # name: @fluch/biome-config
+├── docker-compose.dev.yml                               # postgres 16 + adminer
+├── biome.json                                           # racine, extends @fluch/biome-config
+├── commitlint.config.mjs
+├── package.json                                         # workspace root, scripts délégants --filter
+├── pnpm-workspace.yaml                                  # packages: ['apps/*', 'packages/*']
 ├── pnpm-lock.yaml
-├── README.md
-├── tsconfig.json                   # strict, paths "@/" → "./src/"
-├── tsconfig.build.json             # exclut test, types, *.spec.ts
-└── vitest.config.ts
+├── tsconfig.json                                        # racine pour IDE seulement
+├── LICENSE
+├── CONTRIBUTING.md
+└── README.md
 ```
 
 ## 5. Configuration des fichiers — détails non-obvious
@@ -332,29 +368,20 @@ async function bootstrap() {
     type: VersioningType.URI,
     defaultVersion: '1',
   })
-  app.useGlobalPipes(
-    new ValidationPipe({
-      transform: true,
-      whitelist: true,
-      forbidNonWhitelisted: true,
-    }),
-  )
+  app.useGlobalPipes(new ZodValidationPipe())  // nestjs-zod, depuis S8.1
   app.useGlobalFilters(new AllExceptionsFilter())
   app.enableShutdownHooks()
 
-  // Swagger : UI seulement en dev, JSON exporté toujours (utile pour codegen client)
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('fluch-api')
-    .setDescription('API HTTP de l\'application')
-    .setVersion('1.0')
-    .addCookieAuth('better-auth.session_token')
-    .build()
-  const swaggerDoc = SwaggerModule.createDocument(app, swaggerConfig)
+  // OpenAPI doc généré depuis les contrats TS-Rest via @ts-rest/open-api
+  // (pas @nestjs/swagger natif — ne sait pas lire les Zod schemas)
+  const openApiDoc = generateOpenApi(allContracts, {
+    info: { title: 'fluch-api', version: '1.0' },
+  })
   if (process.env.NODE_ENV !== 'production') {
-    SwaggerModule.setup('docs', app, swaggerDoc)
+    SwaggerModule.setup('docs', app, openApiDoc)  // SwaggerModule juste pour l'UI
   }
-  // /docs-json toujours actif (idempotent)
-  app.getHttpAdapter().get('/docs-json', (_req, res) => res.json(swaggerDoc))
+  // /docs-json toujours actif (idempotent — utile pour codegen front)
+  app.getHttpAdapter().get('/docs-json', (_req, res) => res.json(openApiDoc))
 
   const port = process.env.PORT ?? 3000
   await app.listen(port)
@@ -555,50 +582,49 @@ export class RequestIdInterceptor implements NestInterceptor {
 
 Enregistrer en `APP_INTERCEPTOR` global dans `app.module.ts`.
 
-### 5.12ter `src/common/dto/pagination.dto.ts` et `paginated-response.dto.ts`
+### 5.12ter Pagination — Zod schema partagé
 
-**Convention** : offset/limit. Cursor-based réservé pour v2 si un cas justifie.
-
-```ts
-// pagination.dto.ts
-import { Type } from 'class-transformer'
-import { IsInt, IsOptional, Max, Min } from 'class-validator'
-import { ApiPropertyOptional } from '@nestjs/swagger'
-
-export class PaginationDto {
-  @ApiPropertyOptional({ default: 1, minimum: 1 })
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1)
-  page: number = 1
-
-  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100)
-  limit: number = 20
-}
-```
+**Convention** : offset/limit. Cursor-based réservé pour v2. Schema partagé dans `packages/api-contracts/src/common/pagination.schema.ts`, réutilisé par tous les contrats TS-Rest qui paginent.
 
 ```ts
-// paginated-response.dto.ts
-export class PaginatedResponseDto<T> {
-  items!: T[]
-  total!: number
-  page!: number
-  limit!: number
-}
+// packages/api-contracts/src/common/pagination.schema.ts
+import { z } from 'zod'
 
-export function paginate<T>(items: T[], total: number, page: number, limit: number): PaginatedResponseDto<T> {
-  return { items, total, page, limit }
-}
+export const PaginationQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+})
+export type PaginationQuery = z.infer<typeof PaginationQuerySchema>
+
+export const PaginatedResponseSchema = <T extends z.ZodType>(itemSchema: T) =>
+  z.object({
+    items: z.array(itemSchema),
+    total: z.number().int().min(0),
+    page: z.number().int().min(1),
+    limit: z.number().int().min(1),
+  })
 ```
 
-Usage dans un controller :
+Usage dans un contrat TS-Rest (`packages/api-contracts/src/users/contract.ts`) :
 
 ```ts
-@Get()
-async list(@Query() pagination: PaginationDto): Promise<PaginatedResponseDto<UserResponseDto>> {
-  const { items, total } = await this.usersService.findMany(pagination)
-  return paginate(items, total, pagination.page, pagination.limit)
-}
+import { PaginationQuerySchema, PaginatedResponseSchema } from '../common/pagination.schema'
+
+export const usersContract = c.router({
+  list: {
+    method: 'GET',
+    path: '/users',
+    query: PaginationQuerySchema,
+    responses: {
+      200: PaginatedResponseSchema(UserResponseSchema),
+      403: ErrorSchema,
+    },
+  },
+  // ...
+})
 ```
+
+Côté controller Nest : pagination est extraite automatiquement par TS-Rest via `req.query` typé.
 
 ### 5.12quater `src/observability/sentry.ts` — placeholder
 
@@ -681,57 +707,123 @@ model Verification {
   updatedAt  DateTime @updatedAt
   @@index([identifier])
 }
+
+// === Modèles better-auth plugin `organization` (S8.5) ===
+// Les noms de champs viennent de la doc better-auth plugin organization.
+// Susceptibles d'évoluer entre versions — confirmer la doc à jour.
+
+model Organization {
+  id          String       @id @default(cuid())
+  name        String
+  slug        String       @unique
+  logo        String?
+  createdAt   DateTime     @default(now())
+  members     Member[]
+  invitations Invitation[]
+}
+
+model Member {
+  id             String       @id @default(cuid())
+  userId         String
+  organizationId String
+  role           String       @default("member")
+  createdAt      DateTime     @default(now())
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+}
+
+model Invitation {
+  id             String       @id @default(cuid())
+  email          String
+  organizationId String
+  role           String       @default("member")
+  status         String       @default("pending")
+  expiresAt      DateTime
+  inviterId      String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@index([organizationId])
+}
+
+// === Module exemple tenant-scoped (S8.8) ===
+// Démontre le pattern : champ `organizationId` → automatiquement filtré par l'extension Prisma.
+
+model Post {
+  id             String   @id @default(cuid())
+  title          String
+  content        String
+  authorId       String
+  organizationId String   // ← détecté runtime par Prisma.dmmf → ajouté à MODELS_WITH_TENANT
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  @@index([organizationId])
+  @@index([authorId])
+}
 ```
 
-### 5.14 `vitest.config.ts`
+**Note plugin `organization` better-auth** : le plugin pose aussi `activeOrganizationId` sur le modèle `Session` (à ajouter au schéma à S8.5). C'est la valeur lue par le `TenantInterceptor` (§5.28).
+
+### 5.14 `apps/api/vitest.config.ts`
+
+Version S8.2 (sans Testcontainers ; ajouté en S8.11). `unplugin-swc` requis pour `emitDecoratorMetadata` (tsx/esbuild ne le supportent pas, casse la DI Nest).
 
 ```ts
+import swc from 'unplugin-swc'
 import { defineConfig } from 'vitest/config'
-import tsconfigPaths from 'vite-tsconfig-paths'
 
 export default defineConfig({
-  plugins: [tsconfigPaths()],
+  plugins: [swc.vite({ module: { type: 'es6' } })],
+  resolve: { tsconfigPaths: true },
   test: {
     globals: true,
     environment: 'node',
-    globalSetup: ['./test/setup.ts'],
+    include: ['test/**/*.e2e.spec.ts', 'test/unit/**/*.spec.ts'],
+    setupFiles: ['test/setup.ts'],
     pool: 'forks',
-    poolOptions: { forks: { singleFork: true } },
-    testTimeout: 30000,
-    hookTimeout: 30000,
-    include: ['test/**/*.spec.ts'],
+    fileParallelism: false,       // singleFork équivalent vitest 4 — DB partagée v1
+    testTimeout: 10_000,
+    hookTimeout: 30_000,
     coverage: {
       provider: 'v8',
+      include: ['src/**'],
+      exclude: ['**/*.module.ts', 'src/generated/**', '**/*.spec.ts'],
       reporter: ['text', 'html'],
-      exclude: ['**/*.spec.ts', '**/main.ts', '**/dto/**']
-    }
-  }
+      thresholds: { lines: 75, statements: 75, functions: 75, branches: 70 },
+    },
+  },
 })
 ```
 
-### 5.15 `test/setup.ts`
+**Note S8.11** : quand Testcontainers est ajouté, retirer `fileParallelism: false` → parallel files OK (chaque file a son container).
+
+### 5.15 `apps/api/test/setup.ts`
+
+Version S8.2 — bootstrap unique d'`INestApplication` partagée entre tous les fichiers de test. La DB dev locale est utilisée directement (cleanup par pattern email `@test.local`). Testcontainers ajouté en S8.11.
 
 ```ts
-import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql'
-import { execSync } from 'node:child_process'
+import type { INestApplication } from '@nestjs/common'
+import { Test } from '@nestjs/testing'
+import { afterAll, beforeAll } from 'vitest'
+import { AppModule } from '@/app.module'
 
-let container: StartedPostgreSqlContainer
+let app: INestApplication | undefined
 
-export async function setup() {
-  container = await new PostgreSqlContainer('postgres:16-alpine').start()
-  process.env.DATABASE_URL = container.getConnectionUri()
-  process.env.BETTER_AUTH_SECRET = 'test-secret-at-least-32-characters-long'
-  process.env.BETTER_AUTH_URL = 'http://localhost:3000'
-  execSync('pnpm prisma migrate deploy', {
-    env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL },
-    stdio: 'inherit'
-  })
-}
+beforeAll(async () => {
+  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile()
+  app = moduleRef.createNestApplication({ bodyParser: false })
+  await app.init()
+  ;(globalThis as Record<string, unknown>).__APP__ = app
+})
 
-export async function teardown() {
-  await container?.stop()
-}
+afterAll(async () => {
+  await app?.close()
+})
 ```
+
+**Prérequis run** : `docker compose -f docker-compose.dev.yml up -d` + `pnpm prisma migrate deploy` + `pnpm prisma db seed` (admin user dev).
+
+**Cleanup test users** : pattern email `@test.local` (cf. `apps/api/test/e2e/helpers/db.ts`), préserve l'admin seed `admin@local.dev`.
 
 ### 5.16 `test/helpers/test-app.ts`
 
@@ -966,9 +1058,412 @@ Boilerplate MIT standard avec année et nom du copyright holder. Le développeur
 ## Checklist
 - [ ] Tests e2e ajoutés/mis à jour
 - [ ] Migration Prisma incluse si schéma touché
-- [ ] OpenAPI à jour (les décorateurs Swagger reflètent les changements)
+- [ ] OpenAPI à jour (contrats TS-Rest reflètent les changements)
 - [ ] Pas de secret committé
+- [ ] Modèle tenant-scoped ? Vérifier que `organizationId` est présent et indexé
+- [ ] Service métier ? N'importe PAS `UnsafePrismaService` (lint rule)
 ```
+
+### 5.26 `apps/api/src/prisma/tenant-extension.ts` (S8.6)
+
+Extension Prisma qui intercepte toutes les opérations sur les modèles tenant-scoped. `MODELS_WITH_TENANT` dérivé runtime via DMMF — pas de fichier généré, source de vérité unique = `schema.prisma`.
+
+```ts
+import { Prisma } from '@prisma/client'
+
+export const MODELS_WITH_TENANT = new Set(
+  Prisma.dmmf.datamodel.models
+    .filter((m) => m.fields.some((f) => f.name === 'organizationId'))
+    .map((m) => m.name),
+)
+
+export const tenantExtension = (getTenantId: () => string | null | undefined) =>
+  Prisma.defineExtension({
+    name: 'tenant',
+    query: {
+      $allModels: {
+        async $allOperations({ model, operation, args, query }) {
+          if (!MODELS_WITH_TENANT.has(model)) return query(args)
+
+          const tenantId = getTenantId()
+          if (tenantId === null) return query(args)  // bypass explicite via runAsAdmin
+          if (!tenantId) {
+            throw new Error(
+              `No tenant context for ${model}.${operation}. ` +
+              `Wrap the call in tenantStorage.run({ tenantId }, ...) or runAsAdmin().`,
+            )
+          }
+
+          const readOps = new Set(['findUnique', 'findUniqueOrThrow', 'findFirst', 'findFirstOrThrow', 'findMany', 'count', 'aggregate', 'groupBy'])
+          const targetedWriteOps = new Set(['update', 'updateMany', 'updateManyAndReturn', 'delete', 'deleteMany'])
+
+          if (readOps.has(operation) || targetedWriteOps.has(operation)) {
+            args.where = { ...args.where, tenantId }
+          }
+          if (operation === 'create' || operation === 'upsert') {
+            args.data = { ...args.data, tenantId }
+          }
+          if (operation === 'createMany' || operation === 'createManyAndReturn') {
+            const data = args.data
+            args.data = Array.isArray(data)
+              ? data.map((d) => ({ ...d, tenantId }))
+              : { ...data, tenantId }
+          }
+          return query(args)
+        },
+      },
+    },
+  })
+```
+
+**Sémantique stricte null/undefined/string** (le bug à éviter à tout prix) :
+- `tenantId === null` (strict) → bypass explicite, seulement via `runAsAdmin()`
+- `!tenantId` (couvre `undefined` + `''`) → **throw** défensif
+- `tenantId: string` non-vide → filtre injecté
+
+### 5.27 `apps/api/src/tenant/tenant.storage.ts` (S8.6)
+
+AsyncLocalStorage + helper `runAsAdmin`. Type strict pour empêcher la coercion accidentelle.
+
+```ts
+import { AsyncLocalStorage } from 'node:async_hooks'
+
+export type TenantContext =
+  | { tenantId: string }   // filtre normal
+  | { tenantId: null }     // bypass explicite — runAsAdmin only
+
+export const tenantStorage = new AsyncLocalStorage<TenantContext>()
+
+/** Helper pour exécuter du code avec bypass tenant (admin context). */
+export const runAsAdmin = <T>(fn: () => Promise<T>): Promise<T> =>
+  tenantStorage.run({ tenantId: null }, fn)
+```
+
+**État `undefined`** = absence de store (par défaut `getStore()` retourne `undefined`). C'est l'extension qui rejette ce cas via throw. **Ne pas** ajouter `{ tenantId: undefined }` au type — ce serait redondant et risquerait de réintroduire `?? null`.
+
+### 5.28 `apps/api/src/tenant/tenant.interceptor.ts` (S8.6)
+
+APP_INTERCEPTOR global qui lit `req.session.session.activeOrganizationId` (posé par `AuthGuard` thallesp) et le propage via ALS. **Ne JAMAIS faire `?? null`** — si pas d'org active, ne pas créer de store du tout (= getStore() retournera undefined = throw défensif au prochain query tenant-scoped).
+
+```ts
+import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common'
+import { Observable } from 'rxjs'
+import { tenantStorage } from './tenant.storage'
+
+@Injectable()
+export class TenantInterceptor implements NestInterceptor {
+  intercept(ctx: ExecutionContext, next: CallHandler): Observable<unknown> {
+    const req = ctx.switchToHttp().getRequest()
+    const orgId = req.session?.session?.activeOrganizationId
+
+    return new Observable((observer) => {
+      const run = orgId
+        ? () => tenantStorage.run({ tenantId: orgId }, () => next.handle().subscribe(observer))
+        : () => next.handle().subscribe(observer)  // pas de store → throw défensif si modèle tenant touché
+      run()
+    })
+  }
+}
+```
+
+Enregistrement (`apps/api/src/app.module.ts`) — **APRÈS** l'AuthGuard, donc en `APP_INTERCEPTOR` global :
+
+```ts
+providers: [
+  { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },
+]
+```
+
+### 5.29 `apps/api/src/prisma/prisma.module.ts` (S8.6)
+
+Module global qui expose 2 providers : `UnsafePrismaService` (raw, dangereux) et `PRISMA` (token Symbol → client étendu, par défaut dans les services métier).
+
+```ts
+import { Global, Inject, Module } from '@nestjs/common'
+import { UnsafePrismaService } from './unsafe-prisma.service'
+import { tenantExtension } from './tenant-extension'
+import { tenantStorage } from '../tenant/tenant.storage'
+
+export const PRISMA = Symbol('PRISMA')
+export const InjectPrisma = () => Inject(PRISMA)
+export type TenantScopedPrismaClient = ReturnType<UnsafePrismaService['$extends']>
+
+@Global()
+@Module({
+  providers: [
+    UnsafePrismaService,
+    {
+      provide: PRISMA,
+      useFactory: (raw: UnsafePrismaService) =>
+        raw.$extends(tenantExtension(() => tenantStorage.getStore()?.tenantId)),
+      inject: [UnsafePrismaService],
+    },
+  ],
+  exports: [UnsafePrismaService, PRISMA],
+})
+export class PrismaModule {}
+```
+
+**Usage par défaut** dans les services métier :
+```ts
+@Injectable()
+export class PostService {
+  constructor(@InjectPrisma() private prisma: TenantScopedPrismaClient) {}
+  list() { return this.prisma.post.findMany() }  // tenantId injecté auto
+}
+```
+
+**Usage exceptionnel** dans un job admin / seed (visuellement marqué `Unsafe`) :
+```ts
+@Injectable()
+export class GlobalCleanupJob {
+  constructor(private prisma: UnsafePrismaService) {}  // ← saute aux yeux en review
+  @Cron('0 0 * * *') async cleanup() { /* cross-tenant */ }
+}
+```
+
+### 5.30 `apps/api/src/auth/permissions.ts` (S8.5)
+
+`createAccessControl` + statements de référence + 3 roles (`member`, `admin`, `owner`). Chaque projet étend cette base.
+
+```ts
+import { createAccessControl } from 'better-auth/plugins/access'
+
+const statement = {
+  user: ['read', 'update', 'delete'],
+  organization: ['read', 'update', 'delete'],
+  member: ['create', 'read', 'update', 'delete'],
+  invitation: ['create', 'read', 'cancel'],
+  post: ['create', 'read', 'update', 'delete'],
+} as const
+
+export const ac = createAccessControl(statement)
+
+export const member = ac.newRole({
+  post: ['create', 'read', 'update'],
+  organization: ['read'],
+})
+
+export const admin = ac.newRole({
+  user: ['read', 'update'],
+  organization: ['read', 'update'],
+  member: ['create', 'read', 'update', 'delete'],
+  invitation: ['create', 'read', 'cancel'],
+  post: ['create', 'read', 'update', 'delete'],
+})
+
+export const owner = ac.newRole({
+  user: ['read', 'update', 'delete'],
+  organization: ['read', 'update', 'delete'],
+  member: ['create', 'read', 'update', 'delete'],
+  invitation: ['create', 'read', 'cancel'],
+  post: ['create', 'read', 'update', 'delete'],
+})
+```
+
+Passé au plugin `organization` (et/ou `admin`) dans `auth.config.ts` :
+```ts
+plugins: [
+  organization({ ac, roles: { member, admin, owner } }),
+  // admin plugin pour les rôles system-wide :
+  // admin({ ... }),
+]
+```
+
+### 5.31 `apps/api/src/common/decorators/requires-org.decorator.ts` (S8.6)
+
+Décorateur + guard qui renvoient **400 propre** si la session n'a pas d'`activeOrganizationId`. Évite que l'extension Prisma lève un 500 from depth.
+
+```ts
+import { CanActivate, ExecutionContext, Injectable, SetMetadata, BadRequestException, applyDecorators, UseGuards } from '@nestjs/common'
+import { Reflector } from '@nestjs/core'
+
+const META = 'requires-org'
+
+@Injectable()
+export class RequiresOrgGuard implements CanActivate {
+  constructor(private reflector: Reflector) {}
+  canActivate(ctx: ExecutionContext): boolean {
+    const flag = this.reflector.getAllAndOverride<boolean>(META, [ctx.getHandler(), ctx.getClass()])
+    if (!flag) return true
+    const req = ctx.switchToHttp().getRequest()
+    if (!req.session?.session?.activeOrganizationId) {
+      throw new BadRequestException('No active organization on session')
+    }
+    return true
+  }
+}
+
+export const RequiresOrg = () => applyDecorators(SetMetadata(META, true), UseGuards(RequiresOrgGuard))
+```
+
+Usage : `@RequiresOrg()` sur un controller ou une route handler. Sans ça, l'extension lève un 500 from depth — moins propre côté API.
+
+### 5.32 `packages/api-contracts/src/users/contract.ts` (S8.4)
+
+Exemple de contrat TS-Rest complet. Réutilise les Zod schemas générés par `prisma-zod-generator` + filtre les champs sensibles (password, accounts, sessions).
+
+```ts
+import { initContract } from '@ts-rest/core'
+import { z } from 'zod'
+import { PaginationQuerySchema, PaginatedResponseSchema } from '../common/pagination.schema'
+import { UserResponseSchema, UserUpdateInputSchema } from './schemas'
+
+const c = initContract()
+
+export const usersContract = c.router({
+  me: {
+    method: 'GET',
+    path: '/users/me',
+    responses: { 200: UserResponseSchema, 401: z.object({ message: z.string() }) },
+  },
+  getById: {
+    method: 'GET',
+    path: '/users/:id',
+    pathParams: z.object({ id: z.string() }),
+    responses: { 200: UserResponseSchema, 403: z.object({ message: z.string() }), 404: z.object({ message: z.string() }) },
+  },
+  list: {
+    method: 'GET',
+    path: '/users',
+    query: PaginationQuerySchema,
+    responses: { 200: PaginatedResponseSchema(UserResponseSchema), 403: z.object({ message: z.string() }) },
+  },
+  updateMe: {
+    method: 'PATCH',
+    path: '/users/me',
+    body: UserUpdateInputSchema,
+    responses: { 200: UserResponseSchema, 400: z.object({ issues: z.array(z.any()) }) },
+  },
+})
+```
+
+`schemas.ts` réutilise les Zod générés depuis Prisma :
+```ts
+import { z } from 'zod'
+import { UserUpdateInputSchema as RawUpdate } from '../../../../apps/api/src/generated/zod'
+
+// Filtre les champs sensibles que le client n'a pas le droit de set
+export const UserUpdateInputSchema = RawUpdate.omit({ email: true, role: true, emailVerified: true })
+
+// Filtre les champs sensibles dans la response
+export const UserResponseSchema = z.object({
+  id: z.string(),
+  email: z.string().email(),
+  name: z.string().nullable(),
+  image: z.string().url().nullable(),
+  role: z.string(),
+  createdAt: z.string().or(z.date()),
+})
+```
+
+### 5.33 `packages/api-contracts/package.json`
+
+```json
+{
+  "name": "@fluch/api-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "import": "./dist/index.mjs", "require": "./dist/index.js", "types": "./dist/index.d.ts" }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --watch"
+  },
+  "peerDependencies": {
+    "@ts-rest/core": "^3.0.0",
+    "zod": "^3.0.0"
+  },
+  "devDependencies": {
+    "@fluch/tsconfig": "workspace:*",
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.0"
+  }
+}
+```
+
+Build via `tsup` (rapide, double output ESM/CJS, types inclus). Consommé par `apps/api` via workspace ref `"@fluch/api-contracts": "workspace:*"`.
+
+### 5.34 Hooks better-auth + listeners Nest (S8.7)
+
+**Hook unique** dans `apps/api/src/auth/hooks/user-created.hook.ts` — délègue tout aux listeners via event-emitter :
+
+```ts
+import { Injectable } from '@nestjs/common'
+import { EventEmitter2 } from '@nestjs/event-emitter'
+import { AfterCreate } from '@thallesp/nestjs-better-auth'
+
+@Injectable()
+export class UserCreatedHook {
+  constructor(private events: EventEmitter2) {}
+
+  @AfterCreate('user')
+  async onUserCreated(user: { id: string; email: string; name: string | null }) {
+    await this.events.emitAsync('user.created', { user })
+  }
+}
+```
+
+**Listener exemple** dans `apps/api/src/auth/listeners/create-default-org.listener.ts` — crée une org par défaut + la met active :
+
+```ts
+import { Injectable } from '@nestjs/common'
+import { OnEvent } from '@nestjs/event-emitter'
+import { AuthService } from '../auth.service'
+import type { UserCreatedEvent } from '../events'
+
+@Injectable()
+export class CreateDefaultOrgListener {
+  constructor(private auth: AuthService) {}
+
+  @OnEvent('user.created', { async: true })
+  async handle({ user }: UserCreatedEvent) {
+    const orgName = user.name ? `${user.name}'s workspace` : 'My workspace'
+    await this.auth.api.createOrganization({ body: { name: orgName, userId: user.id } })
+    // Le plugin organization pose membership owner + active org auto
+  }
+}
+```
+
+**`emitAsync` (pas `emit`)** : le hook better-auth attend la fin des listeners avant de retourner. Sinon race conditions au signup. **Listeners post-commit** : l'user est déjà commité quand l'event est émis ; pas d'accès à la transaction better-auth.
+
+### 5.35 Lint rule `UnsafePrismaService` (S8.6)
+
+Biome ne supporte pas encore les `no-restricted-imports` avec patterns par chemin (vérifier `nursery` à l'impl). Si insuffisant → ajouter ESLint en parallèle juste pour cette règle.
+
+```js
+// .eslintrc.cjs (override paths-restricted only — ne remplace pas biome)
+module.exports = {
+  overrides: [
+    {
+      files: ['apps/api/src/**/*.service.ts', 'apps/api/src/**/*.controller.ts'],
+      rules: {
+        'no-restricted-imports': ['error', {
+          paths: [{
+            name: '@/prisma/unsafe-prisma.service',
+            importNames: ['UnsafePrismaService'],
+            message:
+              'UnsafePrismaService bypasses tenant isolation. ' +
+              'Use @InjectPrisma() with TenantScopedPrismaClient instead. ' +
+              'If you really need raw access (cross-tenant job, admin script), ' +
+              'add the file to the allowlist override.',
+          }],
+        }],
+      },
+    },
+    {
+      files: ['apps/api/src/jobs/**', 'apps/api/prisma/**', 'apps/api/scripts/**'],
+      rules: { 'no-restricted-imports': 'off' },
+    },
+  ],
+}
+```
+
+**Alternative si on veut rester biome-only** : un test CI qui grep `UnsafePrismaService` dans `apps/api/src/**/*.{service,controller}.ts` (hors paths autorisés) et échoue si trouvé. ~10 lignes de bash.
 
 ## 6. CI workflows
 
@@ -1066,33 +1561,79 @@ jobs:
       - run: pnpm audit --prod --audit-level=high
 ```
 
-## 7. Pattern monorepo-safe — explicite
+## 7. Architecture monorepo
 
-C'est le point que l'user a soulevé explicitement. Trois mécanismes :
+Le starter est un monorepo pnpm dès l'origine (pas un "pattern safe" en option). Six mécanismes le rendent cohérent :
 
-### 7.1 Husky `prepare` conditionnel
+### 7.1 Workspace pnpm
 
-Voir §5.1. Le script vérifie l'existence de `.git/` au cwd avant d'installer les hooks. Dans un monorepo, le template est dans `apps/api/` où il n'y a pas de `.git/` → no-op silencieux. Les hooks du root prennent le relais.
+`pnpm-workspace.yaml` :
+```yaml
+packages:
+  - 'apps/*'
+  - 'packages/*'
+```
 
-**Pour intégration monorepo**, le root doit avoir un `lint-staged` qui délègue :
+Chaque package a son `package.json` avec un nom scoped (`@fluch/api`, `@fluch/api-contracts`, `@fluch/tsconfig`, `@fluch/biome-config`). Inter-dépendances déclarées via `"workspace:*"`.
 
+### 7.2 Scripts root délégants
+
+Le `package.json` racine ne contient pas le code applicatif. Il délègue tout :
 ```json
-"lint-staged": {
-  "apps/api/**/*.{ts,js,json}": "pnpm --filter @fluch/api exec biome check --write --no-errors-on-unmatched"
+"scripts": {
+  "dev": "pnpm --filter @fluch/api dev",
+  "build": "pnpm -r build",
+  "test": "pnpm --filter @fluch/api test",
+  "test:cov": "pnpm --filter @fluch/api test:cov",
+  "typecheck": "pnpm -r typecheck",
+  "check": "biome check .",
+  "prisma:migrate": "pnpm --filter @fluch/api prisma:migrate"
 }
 ```
 
-(Documenter dans le README.)
+`pnpm -r <script>` exécute le script dans tous les workspaces qui le définissent.
 
-### 7.2 CI avec `paths:` filters
+### 7.3 Husky centralisé root, lint-staged délégant
 
-Voir §6.1. Les filtres `paths:` font que le workflow ne tourne que si des fichiers pertinents changent. En monorepo, l'user remplace `src/**` par `apps/api/src/**`, etc. Aucun conflit avec un `ci-web.yml` qui filtre `apps/web/**`.
+`.husky/` au root. `lint-staged` au root délègue par paths :
+```json
+"lint-staged": {
+  "apps/api/**/*.{ts,js,json}": "biome check --write --no-errors-on-unmatched",
+  "packages/*/src/**/*.ts": "biome check --write --no-errors-on-unmatched",
+  "apps/api/prisma/schema.prisma": "pnpm --filter @fluch/api prisma format"
+}
+```
 
-**Naming** : `ci-api.yml` (pas `ci.yml`) pour éviter collision si un autre template définit aussi `ci.yml`.
+### 7.4 Tsconfig partagé via `packages/tsconfig`
 
-### 7.3 Pas de hardcoded paths absolus
+`packages/tsconfig/base.json` (config commune strict). `packages/tsconfig/api.json` (extends base + `experimentalDecorators` + `emitDecoratorMetadata`). `apps/api/tsconfig.json` extends `@fluch/tsconfig/api.json`.
 
-Tout chemin dans les scripts (`package.json`, `Dockerfile`, etc.) est relatif au cwd du template. Le Dockerfile fonctionne tel quel en standalone (`docker build -f docker/Dockerfile .`) ET en monorepo (`docker build -f apps/api/docker/Dockerfile apps/api/`).
+### 7.5 Contrats partagés via `packages/api-contracts`
+
+C'est la valeur clé du monorepo. Les contrats TS-Rest + Zod schemas vivent dans `packages/api-contracts/`. `apps/api/` les consomme via workspace ref. Quand `apps/web/` arrivera, il les consommera de la même façon — partage **sans publication npm**.
+
+### 7.6 Biome config partagée via `packages/biome-config`
+
+`packages/biome-config/biome.json` est la SoT. `biome.json` à la racine `extends` simplement vers ce package. Chaque package peut overrider localement si besoin (rare).
+
+### 7.7 CI paths-filtered par workspace
+
+`.github/workflows/ci-api.yml` filtre :
+```yaml
+paths:
+  - 'apps/api/**'
+  - 'packages/api-contracts/**'
+  - 'packages/tsconfig/**'
+  - 'pnpm-lock.yaml'
+  - 'pnpm-workspace.yaml'
+  - '.github/workflows/ci-api.yml'
+```
+
+Modification dans `apps/web/` → `ci-api.yml` ne tourne pas. **Naming** : `ci-api.yml` (pas `ci.yml`) pour anticiper `ci-web.yml`.
+
+### 7.8 Dependabot 4 blocs
+
+`.github/dependabot.yml` ouvre 4 blocs npm (un par workspace) + GH Actions + Docker. Chaque workspace a ses propres PR auto, groupées par famille (`@nestjs/*`, `@prisma/*`, etc.).
 
 ## 8. README — structure attendue
 
@@ -1108,10 +1649,13 @@ Le README doit avoir ces sections, dans cet ordre :
 8. **Database** (migrations, seed, studio, stratégie prod — cf. §13)
 9. **Testing** (Vitest + Testcontainers, comment lancer)
 10. **Docker** (build local, run prod, compose dev, nonroot, HEALTHCHECK)
-11. **Monorepo integration** (section dédiée — voir §7 de cette spec + ajustements `dependabot.yml`)
-12. **Adding OAuth providers** (pointer vers la doc better-auth, indiquer où câbler)
-13. **Conventional commits** (table des types acceptés, comment ça génère le changelog)
-14. **Production checklist** (vars secrets à régénérer, migrations à exécuter, Sentry à activer, etc.)
+11. **Monorepo structure** (architecture pnpm — voir §7 : `apps/api`, `packages/api-contracts`, `packages/tsconfig`, `packages/biome-config`, scripts délégants, ajout d'un `apps/web` ultérieur)
+12. **Multi-tenant isolation** (extension Prisma, `@InjectPrisma()` vs `UnsafePrismaService`, `runAsAdmin`, `@RequiresOrg`, comment ajouter un modèle tenant-scoped — pointer vers [fluch-nest-starter-tenant-extension.md](fluch-nest-starter-tenant-extension.md))
+13. **RBAC permissions** (`createAccessControl`, table des décorateurs `@Roles`/`@OrgRoles`/`@UserHasPermission`/`@MemberHasPermission`, exemple d'ajout de role)
+14. **TS-Rest contracts** (structure `packages/api-contracts`, ajout d'un module, consommation depuis le front à venir)
+15. **Adding OAuth providers** (pointer vers la doc better-auth, indiquer où câbler)
+16. **Conventional commits** (table des types acceptés, comment ça génère le changelog)
+17. **Production checklist** (vars secrets à régénérer, migrations à exécuter, Sentry à activer, etc.)
 
 ## 9. Critères d'acceptation (smoke tests)
 
@@ -1142,6 +1686,11 @@ Le développeur doit valider chacun de ces points avant de considérer le templa
 23. **HEALTHCHECK Docker** : `docker run -d --name x fluch-api && sleep 15 && docker inspect x --format '{{.State.Health.Status}}'` → `healthy`
 24. **Test monorepo** : `mkdir -p /tmp/mono/apps/api && cp -r . /tmp/mono/apps/api && rm -rf /tmp/mono/apps/api/.git && cd /tmp/mono/apps/api && pnpm install` → pas d'erreur du `prepare` script (no-op)
 25. **Dependabot config valide** : pousser sur GitHub → onglet "Security" → Dependabot listé comme actif sans erreur de parsing
+26. **Org auto-créée** : `POST /v1/api/auth/sign-up/email` → 200, puis `GET /v1/api/auth/get-session` avec cookie → `session.session.activeOrganizationId` présent (event listener S8.7)
+27. **Isolation tenant** : créer 2 users dans 2 orgs (A, B), chacun crée 1 post → `GET /v1/posts` user A → 1 post (le sien), pas celui de B (extension Prisma S8.6)
+28. **Cross-tenant bypass impossible** : user A → `GET /v1/posts/<id-du-post-de-B>` → 404 (pas 200, pas 403). L'extension injecte le filtre `tenantId` dans le `where`, le record est invisible.
+29. **Lint rule UnsafePrismaService** : ajouter `import { UnsafePrismaService } from '@/prisma/unsafe-prisma.service'` dans `apps/api/src/users/users.service.ts` → `pnpm check` échoue avec message clair (S8.6)
+30. **Contrat partagé** : `import { usersContract } from '@fluch/api-contracts'` depuis un fichier hors `apps/api` compile et fournit le typage end-to-end (S8.4)
 
 ## 10. Hors scope v1
 
@@ -1150,32 +1699,47 @@ Le développeur doit valider chacun de ces points avant de considérer le templa
 - OAuth providers (Google, GitHub, etc.) — better-auth les supporte, l'user les active selon besoins
 - OpenTelemetry full instrumentation — placeholder Sentry présent, mais pas câblé
 - Rate limiting via Redis — `@nestjs/throttler` in-memory uniquement
-- Multi-tenancy
 - File uploads / S3
 - Job queue (BullMQ etc.)
 - WebSockets / SSE
 - GraphQL
 - Cursor-based pagination — offset/limit suffit en v1
-- Pagination cross-cutting via `@nestjs/swagger` `ApiExtraModels` — patterns plus avancés v2
 - Changelog auto-generation (release-please, changesets) — décision laissée à l'user
 - SBOM generation pour supply chain — peut être ajouté en CI quand le besoin émerge
+- Hygen scaffolding (`pnpm gen:resource <Model>`) — reporté post-S18, à ré-évaluer après 3-4 modules métier (rule of three)
+- App frontend (`apps/web/`) — out-of-scope du starter back, mais la structure monorepo l'attend
+- BI tools / accès direct DB — pour ce cas, RLS Postgres reste pertinent (voir [tenant-extension.md](fluch-nest-starter-tenant-extension.md) §7)
 
 ## 11. Questions ouvertes (à trancher en cours d'implémentation)
 
 - Format exact du `User` model better-auth : vérifier la doc à jour avant de figer le schéma Prisma (§5.13 est un best guess)
-- Préfixe API : tout sous `/api/*` ou les routes auth uniquement sous `/api/auth/*` ? Recommandation : tout sous `/api/*` pour cohérence frontend.
-- Mise à jour automatique de `updatedAt` sur User : via `@updatedAt` Prisma (OK) ou middleware Nest ? Prisma suffit.
-- ~~Logger : faut-il un transport spécifique pour stdout JSON en prod ?~~ **Tranché** : `ConsoleLogger` natif Nest 11 avec `json: true` en prod, `colors: true` en dev. Pas de dép externe. Cf. §5.6 + S04 dans stories.
+- Format exact des modèles `Organization` / `Member` / `Invitation` du plugin better-auth `organization` : confirmer à l'impl S8.5 — peuvent avoir évolué entre versions
+- Statements et roles initiaux dans `permissions.ts` : le starter livre une base (user, organization, member, invitation, post + roles member/admin/owner). Chaque projet étend selon ses besoins. À documenter dans README.
+- Création d'org par défaut au signup vs invitation explicite : le starter par défaut crée une org "personnelle" (S8.7). Documenté comme adaptable — si le SaaS visé attend invitation, retirer le listener.
+- Liste des effets de bord du listener `user.created` : starter livre la création d'org. Mail welcome, seed démo, queue onboarding restent placeholders documentés. À étoffer par projet.
+- Lint rule `UnsafePrismaService` : biome (nursery) suffit-il à l'impl S8.6, ou faut-il ajouter ESLint en parallèle ? Décision au moment de l'impl (cf. §5.35).
+- Gestion d'erreur dans les listeners Nest (`emitAsync`) : un listener qui throw bloque les autres par défaut. Wrap try/catch dans chaque listener pour isolation ? Décision au moment de l'impl S8.7.
+- ~~Préfixe API~~ → **Tranché** : tout sous `/api/*` pour cohérence frontend
+- ~~`updatedAt`~~ → **Tranché** : `@updatedAt` Prisma natif suffit
+- ~~Logger~~ → **Tranché** : `ConsoleLogger` natif Nest 11 (cf. §5.6 + S04)
 
 ## 12. Sources / références à consulter pendant l'impl
 
-- https://docs.nestjs.com/ — base
-- https://www.better-auth.com/docs — config + adapter Prisma
-- https://www.prisma.io/docs — schema, migrate, client
-- https://node.testcontainers.org/modules/postgresql/ — testcontainers postgres
-- https://docs.nestjs.com/techniques/logger — `ConsoleLogger` natif (options `json`, `colors`, `logLevels`)
-- https://biomejs.dev/reference/configuration/ — config Biome
-- https://commitlint.js.org/ — conventional commits
+- <https://docs.nestjs.com/> — base
+- <https://www.better-auth.com/docs> — config + adapter Prisma
+- <https://www.better-auth.com/docs/plugins/organization> — plugin organization
+- <https://www.better-auth.com/docs/plugins/admin> — plugin admin
+- <https://www.better-auth.com/docs/plugins/access> — createAccessControl
+- <https://github.com/ThallesP/nestjs-better-auth> — intégration Nest officielle
+- <https://www.prisma.io/docs> — schema, migrate, client
+- <https://ts-rest.com/docs> — TS-Rest core + Nest adapter
+- <https://github.com/omar-dulaimi/prisma-zod-generator> — generator Zod depuis Prisma
+- <https://docs.nestjs.com/techniques/events> — @nestjs/event-emitter
+- <https://nodejs.org/api/async_context.html> — AsyncLocalStorage natif
+- <https://node.testcontainers.org/modules/postgresql/> — testcontainers postgres (S8.11)
+- <https://docs.nestjs.com/techniques/logger> — `ConsoleLogger` natif (options `json`, `colors`, `logLevels`)
+- <https://biomejs.dev/reference/configuration/> — config Biome
+- <https://commitlint.js.org/> — conventional commits
 
 ## 13. Stratégie de migrations en production
 
