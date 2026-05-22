@@ -16,7 +16,8 @@
     "resolveJsonModule": true,
     "types": ["node"],
     "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] }
+    "paths": { "@/*": ["src/*"] },
+    "ignoreDeprecations": "5.0"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "test"]

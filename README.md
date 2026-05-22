@@ -36,7 +36,17 @@
 
 ## 9. Testing
 
-<!-- TODO: filled in by subsequent stories -->
+Suite e2e vitest + supertest contre la DB Postgres dev locale.
+
+**Prérequis** : `docker compose -f docker-compose.dev.yml up -d` + `pnpm prisma migrate dev` + `pnpm prisma db seed`.
+
+```bash
+pnpm test         # run unique
+pnpm test:watch   # mode watch
+pnpm test:cov     # avec couverture (cible >75% sur src/users + src/auth)
+```
+
+Les tests créent leurs propres users (pattern `@test.local`) et les nettoient avant/après. L'admin seed (`admin@local.dev`) est préservé.
 
 ## 10. Docker
 

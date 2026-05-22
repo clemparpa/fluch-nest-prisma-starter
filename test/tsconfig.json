@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "ignoreDeprecations": "5.0",
+    "rootDir": "..",
+    "noEmit": true,
+    "types": ["node", "vitest/globals"]
+  },
+  "include": ["**/*.ts", "../src/**/*"]
+}
