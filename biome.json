@@ -15,8 +15,13 @@
       "!node_modules",
       "!coverage",
       "!.husky",
-      "!prisma/migrations",
-      "!src/generated"
+      "!apps/*/dist",
+      "!apps/*/node_modules",
+      "!apps/*/coverage",
+      "!apps/*/src/generated",
+      "!apps/*/prisma/migrations",
+      "!packages/*/dist",
+      "!packages/*/node_modules"
     ]
   },
   "linter": {
@@ -60,7 +65,7 @@
   },
   "overrides": [
     {
-      "includes": ["scripts/**", "prisma/seed.ts"],
+      "includes": ["scripts/**", "apps/*/prisma/seed.ts"],
       "linter": {
         "rules": {
           "suspicious": {
