@@ -19,31 +19,40 @@ datasource db {
 }
 
 model User {
-  id            String    @id
+  id            String       @id
   name          String
   email         String
-  emailVerified Boolean   @default(false)
+  emailVerified Boolean      @default(false)
   image         String?
-  role          String    @default("user")
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
   sessions      Session[]
   accounts      Account[]
+  role          String?
+  banned        Boolean?
+  banReason     String?
+  banExpires    DateTime?    @db.Timestamptz(3)
+  members       Member[]
+  invitations   Invitation[]
+  teamMembers   TeamMember[]
 
   @@unique([email])
   @@map("user")
 }
 
 model Session {
-  id        String   @id
-  expiresAt DateTime
-  token     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  ipAddress String?
-  userAgent String?
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                   String   @id
+  expiresAt            DateTime
+  token                String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  ipAddress            String?
+  userAgent            String?
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  impersonatedBy       String?
+  activeOrganizationId String?
+  activeTeamId         String?
 
   @@unique([token])
   @@index([userId])
@@ -80,4 +89,82 @@ model Verification {
 
   @@index([identifier])
   @@map("verification")
+}
+
+model Organization {
+  id                String             @id
+  name              String
+  slug              String             @unique
+  logo              String?
+  metadata          String?
+  createdAt         DateTime           @db.Timestamptz(3)
+  members           Member[]
+  invitations       Invitation[]
+  organizationRoles OrganizationRole[]
+  teams             Team[]
+
+  @@map("organization")
+}
+
+model Member {
+  id             String       @id
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  organizationId String
+  role           String
+  createdAt      DateTime     @db.Timestamptz(3)
+
+  @@map("member")
+}
+
+model Invitation {
+  id             String       @id
+  email          String
+  inviter        User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+  inviterId      String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  role           String?
+  status         String
+  createdAt      DateTime     @db.Timestamptz(3)
+  expiresAt      DateTime     @db.Timestamptz(3)
+  teamId         String?
+
+  @@map("invitation")
+}
+
+model OrganizationRole {
+  id             String       @id
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  role           String
+  permission     String
+  createdAt      DateTime     @db.Timestamptz(3)
+  updatedAt      DateTime?    @db.Timestamptz(3)
+
+  @@map("organizationRole")
+}
+
+model Team {
+  id             String       @id
+  name           String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  organizationId String
+  createdAt      DateTime     @db.Timestamptz(3)
+  updatedAt      DateTime?    @db.Timestamptz(3)
+  teamMembers    TeamMember[]
+
+  @@map("team")
+}
+
+model TeamMember {
+  id        String    @id
+  team      Team      @relation(fields: [teamId], references: [id])
+  teamId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  createdAt DateTime? @db.Timestamptz(3)
+
+  @@map("teamMember")
 }

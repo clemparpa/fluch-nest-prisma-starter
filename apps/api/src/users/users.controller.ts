@@ -1,5 +1,6 @@
 import { usersContract } from '@fluch/api-contracts'
 import { Controller, ForbiddenException } from '@nestjs/common'
+import { Roles } from '@thallesp/nestjs-better-auth'
 import { TsRestHandler, tsRestHandler } from '@ts-rest/nest'
 import { CurrentUser, type CurrentUserPayload } from '@/common/decorators/current-user.decorator'
 // biome-ignore lint/style/useImportType: needed at runtime for Nest DI (emitDecoratorMetadata)
@@ -25,6 +26,7 @@ export class UsersController {
     })
   }
 
+  // "self OR admin" — not expressible as a single decorator; check stays inline.
   @TsRestHandler(usersContract.findById)
   findById(@CurrentUser() me: CurrentUserPayload) {
     return tsRestHandler(usersContract.findById, async ({ params }) => {
@@ -37,9 +39,9 @@ export class UsersController {
   }
 
   @TsRestHandler(usersContract.list)
-  list(@CurrentUser() me: CurrentUserPayload) {
+  @Roles(['admin'])
+  list() {
     return tsRestHandler(usersContract.list, async ({ query }) => {
-      if (me.role !== 'admin') throw new ForbiddenException()
       const { items, total } = await this.usersService.findMany(query)
       return {
         status: 200,
