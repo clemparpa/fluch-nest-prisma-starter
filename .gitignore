@@ -37,4 +37,4 @@ lerna-debug.log*
 .DS_Store
 
 apps/*/src/generated/prisma
-apps/*/src/generated/zod
+packages/*/src/generated/zod

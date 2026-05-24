@@ -2,7 +2,6 @@ import { usersContract } from '@fluch/api-contracts'
 import { Controller, ForbiddenException } from '@nestjs/common'
 import { TsRestHandler, tsRestHandler } from '@ts-rest/nest'
 import { CurrentUser, type CurrentUserPayload } from '@/common/decorators/current-user.decorator'
-import { toUserResponse } from './users.mapper'
 // biome-ignore lint/style/useImportType: needed at runtime for Nest DI (emitDecoratorMetadata)
 import { UsersService } from './users.service'
 
@@ -14,7 +13,7 @@ export class UsersController {
   getMe(@CurrentUser() me: CurrentUserPayload) {
     return tsRestHandler(usersContract.getMe, async () => {
       const user = await this.usersService.findById(me.id)
-      return { status: 200, body: toUserResponse(user) }
+      return { status: 200, body: user }
     })
   }
 
@@ -22,7 +21,7 @@ export class UsersController {
   updateMe(@CurrentUser() me: CurrentUserPayload) {
     return tsRestHandler(usersContract.updateMe, async ({ body }) => {
       const updated = await this.usersService.updateMe(me.id, body)
-      return { status: 200, body: toUserResponse(updated) }
+      return { status: 200, body: updated }
     })
   }
 
@@ -33,7 +32,7 @@ export class UsersController {
         throw new ForbiddenException()
       }
       const user = await this.usersService.findById(params.id)
-      return { status: 200, body: toUserResponse(user) }
+      return { status: 200, body: user }
     })
   }
 
@@ -44,12 +43,7 @@ export class UsersController {
       const { items, total } = await this.usersService.findMany(query)
       return {
         status: 200,
-        body: {
-          items: items.map(toUserResponse),
-          total,
-          page: query.page,
-          limit: query.limit,
-        },
+        body: { items, total, page: query.page, limit: query.limit },
       }
     })
   }

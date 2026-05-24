@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { AuthModule } from '@thallesp/nestjs-better-auth'
+import { TsRestModule } from '@ts-rest/nest'
 import { createAuth } from './auth/auth.config'
 import { CommonModule } from './common/common.module'
 import { ConfigModule } from './config/config.module'
@@ -17,6 +18,7 @@ import { UsersModule } from './users/users.module'
     CommonModule,
     PrismaModule,
     UsersModule,
+    TsRestModule.register({ validateResponses: true, isGlobal: true }),
     AuthModule.forRootAsync({
       imports: [PrismaModule, ConfigModule],
       inject: [PrismaService, ConfigService],
