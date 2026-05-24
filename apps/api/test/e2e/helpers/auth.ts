@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import request from 'supertest'
-import { getHttpServer } from './app'
+import { PrismaService } from '@/prisma/prisma.service'
+import { getApp, getHttpServer } from './app'
 
 export const ADMIN_EMAIL = 'admin@local.dev'
 export const ADMIN_PASSWORD = 'admin12345678'
@@ -41,4 +42,40 @@ export async function signIn(email: string, password: string): Promise<string> {
 
 export function getAdminCookie(): Promise<string> {
   return signIn(ADMIN_EMAIL, ADMIN_PASSWORD)
+}
+
+export async function createOrgAndActivate(
+  cookie: string,
+  slug: string,
+): Promise<{ orgId: string; cookie: string }> {
+  const create = await request(getHttpServer())
+    .post('/api/auth/organization/create')
+    .set('Cookie', cookie)
+    .send({ name: `Org ${slug}`, slug })
+    .expect(200)
+  const orgId = create.body.id as string
+  const setActive = await request(getHttpServer())
+    .post('/api/auth/organization/set-active')
+    .set('Cookie', cookie)
+    .send({ organizationId: orgId })
+    .expect(200)
+  const refreshed = extractAuthCookie(
+    setActive.headers['set-cookie'] as unknown as string[] | undefined,
+  )
+  return { orgId, cookie: refreshed }
+}
+
+/**
+ * Direct DB insert — bypass the invitation flow for speed in unit-ish tests.
+ * The invitation flow itself is covered separately when relevant.
+ */
+export async function addOrgMember(
+  organizationId: string,
+  userId: string,
+  role: 'member' | 'admin' | 'owner',
+): Promise<void> {
+  const prisma = getApp().get(PrismaService)
+  await prisma.member.create({
+    data: { id: randomUUID(), organizationId, userId, role },
+  })
 }

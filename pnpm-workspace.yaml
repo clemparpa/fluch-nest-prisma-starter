@@ -3,10 +3,12 @@ packages:
   - 'packages/*'
 
 allowBuilds:
-  '@nestjs/core': false
+  '@nestjs/core': true
+  '@prisma/client': true
   '@prisma/engines': true
   '@scarf/scarf': false
   '@swc/core': true
+  better-sqlite3: false
   esbuild: true
   prisma: true
   prisma-zod-generator: false

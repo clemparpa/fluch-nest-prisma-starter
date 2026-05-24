@@ -1,7 +1,9 @@
 import { betterAuth } from 'better-auth'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
+import { admin, organization } from 'better-auth/plugins'
 import type { Env } from '@/config/env.schema'
 import type { PrismaClient } from '@/generated/prisma/client'
+import { ac, orgAdmin, orgMember, orgOwner, sysAdmin, sysUser } from './permissions'
 
 type AuthEnv = Pick<Env, 'NODE_ENV' | 'BETTER_AUTH_SECRET' | 'BETTER_AUTH_URL' | 'FRONTEND_URL'>
 
@@ -36,6 +38,10 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
         sameSite: 'lax',
       },
     },
+    plugins: [
+      admin({ ac, roles: { user: sysUser, admin: sysAdmin } }),
+      organization({ ac, roles: { member: orgMember, admin: orgAdmin, owner: orgOwner } }),
+    ],
   })
 }
 
