@@ -1,48 +1,56 @@
-import { Body, Controller, ForbiddenException, Get, Param, Patch, Query } from '@nestjs/common'
-import { ApiTags } from '@nestjs/swagger'
-import { ZodSerializerDto } from 'nestjs-zod'
+import { usersContract } from '@fluch/api-contracts'
+import { Controller, ForbiddenException } from '@nestjs/common'
+import { TsRestHandler, tsRestHandler } from '@ts-rest/nest'
 import { CurrentUser, type CurrentUserPayload } from '@/common/decorators/current-user.decorator'
-import { paginate } from '@/common/dto/paginated-response.dto'
-// biome-ignore lint/style/useImportType: needed at runtime for Nest DI (emitDecoratorMetadata)
-import { PaginationDto } from '@/common/dto/pagination.dto'
-import { PaginatedUsersDto } from './dto/paginated-users.dto'
-// biome-ignore lint/style/useImportType: needed at runtime for Nest DI (emitDecoratorMetadata)
-import { UpdateUserDto } from './dto/update-user.dto'
-import { UserResponseDto } from './dto/user-response.dto'
+import { toUserResponse } from './users.mapper'
 // biome-ignore lint/style/useImportType: needed at runtime for Nest DI (emitDecoratorMetadata)
 import { UsersService } from './users.service'
 
-@ApiTags('users')
-@Controller('users')
+@Controller()
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @Get('me')
-  @ZodSerializerDto(UserResponseDto)
-  me(@CurrentUser() me: CurrentUserPayload) {
-    return this.usersService.findById(me.id)
+  @TsRestHandler(usersContract.getMe)
+  getMe(@CurrentUser() me: CurrentUserPayload) {
+    return tsRestHandler(usersContract.getMe, async () => {
+      const user = await this.usersService.findById(me.id)
+      return { status: 200, body: toUserResponse(user) }
+    })
   }
 
-  @Patch('me')
-  @ZodSerializerDto(UserResponseDto)
-  updateMe(@CurrentUser() me: CurrentUserPayload, @Body() dto: UpdateUserDto) {
-    return this.usersService.updateMe(me.id, dto)
+  @TsRestHandler(usersContract.updateMe)
+  updateMe(@CurrentUser() me: CurrentUserPayload) {
+    return tsRestHandler(usersContract.updateMe, async ({ body }) => {
+      const updated = await this.usersService.updateMe(me.id, body)
+      return { status: 200, body: toUserResponse(updated) }
+    })
   }
 
-  @Get(':id')
-  @ZodSerializerDto(UserResponseDto)
-  findById(@CurrentUser() me: CurrentUserPayload, @Param('id') id: string) {
-    if (me.role !== 'admin' && me.id !== id) {
-      throw new ForbiddenException()
-    }
-    return this.usersService.findById(id)
+  @TsRestHandler(usersContract.findById)
+  findById(@CurrentUser() me: CurrentUserPayload) {
+    return tsRestHandler(usersContract.findById, async ({ params }) => {
+      if (me.role !== 'admin' && me.id !== params.id) {
+        throw new ForbiddenException()
+      }
+      const user = await this.usersService.findById(params.id)
+      return { status: 200, body: toUserResponse(user) }
+    })
   }
 
-  @Get()
-  @ZodSerializerDto(PaginatedUsersDto)
-  async list(@CurrentUser() me: CurrentUserPayload, @Query() pagination: PaginationDto) {
-    if (me.role !== 'admin') throw new ForbiddenException()
-    const { items, total } = await this.usersService.findMany(pagination)
-    return paginate(items, total, pagination.page, pagination.limit)
+  @TsRestHandler(usersContract.list)
+  list(@CurrentUser() me: CurrentUserPayload) {
+    return tsRestHandler(usersContract.list, async ({ query }) => {
+      if (me.role !== 'admin') throw new ForbiddenException()
+      const { items, total } = await this.usersService.findMany(query)
+      return {
+        status: 200,
+        body: {
+          items: items.map(toUserResponse),
+          total,
+          page: query.page,
+          limit: query.limit,
+        },
+      }
+    })
   }
 }
