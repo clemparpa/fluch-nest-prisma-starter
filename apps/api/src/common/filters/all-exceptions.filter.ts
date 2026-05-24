@@ -5,8 +5,8 @@ import {
   HttpException,
   HttpStatus,
 } from '@nestjs/common'
+import { RequestValidationError, TsRestRequestValidationError } from '@ts-rest/nest'
 import type { Request, Response } from 'express'
-import { ZodSerializationException, ZodValidationException } from 'nestjs-zod'
 import type { ZodError } from 'zod'
 import { Prisma } from '@/generated/prisma/client'
 // biome-ignore lint/style/useImportType: needed at runtime for Nest DI (emitDecoratorMetadata)
@@ -69,25 +69,24 @@ export class AllExceptionsFilter implements ExceptionFilter {
   }
 
   private resolve(exception: unknown): ResolvedError {
-    if (exception instanceof ZodValidationException) {
-      const zodError = exception.getZodError() as ZodError
+    if (
+      exception instanceof RequestValidationError ||
+      exception instanceof TsRestRequestValidationError
+    ) {
+      // Aplatissement : on remonte les issues du premier ZodError non-null parmi
+      // pathParams / headers / query / body — un seul est non-null à la fois en pratique.
+      const firstError =
+        (exception.pathParams as ZodError | null) ??
+        (exception.headers as ZodError | null) ??
+        (exception.query as ZodError | null) ??
+        (exception.body as ZodError | null)
       return {
         statusCode: HttpStatus.BAD_REQUEST,
         message: 'Validation failed',
         error: this.statusText(HttpStatus.BAD_REQUEST),
         errorName: exception.name,
-        issues: zodError.issues,
+        issues: firstError?.issues ?? [],
       }
-    }
-
-    if (exception instanceof ZodSerializationException) {
-      const zodError = exception.getZodError() as ZodError
-      this.logger.error(
-        `[ZodSerialization] Response shape did not match schema: ${zodError.message}`,
-        this.isProd ? undefined : exception.stack,
-        'ExceptionFilter',
-      )
-      return this.internalError(exception)
     }
 
     if (exception instanceof HttpException) {

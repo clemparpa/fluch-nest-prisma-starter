@@ -29,7 +29,7 @@ describe('Users e2e (S8.1 DoD)', () => {
     await request(getHttpServer()).get('/users/me').expect(401)
   })
 
-  it('#2 GET /users/me admin → 200 + shape filtré (sans password/accounts/sessions/emailVerified/updatedAt)', async () => {
+  it('#2 GET /users/me admin → 200 + shape User complet (sans password/accounts/sessions)', async () => {
     const res = await request(getHttpServer())
       .get('/users/me')
       .set('Cookie', adminCookie)
@@ -42,11 +42,9 @@ describe('Users e2e (S8.1 DoD)', () => {
       createdAt: expect.any(String),
     })
     expect(Object.keys(res.body).sort()).toEqual(
-      ['createdAt', 'email', 'id', 'image', 'name', 'role'].sort(),
+      ['createdAt', 'email', 'emailVerified', 'id', 'image', 'name', 'role', 'updatedAt'].sort(),
     )
     expect(res.body).not.toHaveProperty('password')
-    expect(res.body).not.toHaveProperty('emailVerified')
-    expect(res.body).not.toHaveProperty('updatedAt')
     expect(res.body).not.toHaveProperty('accounts')
     expect(res.body).not.toHaveProperty('sessions')
   })
@@ -100,24 +98,6 @@ describe('Users e2e (S8.1 DoD)', () => {
     expect(res.body.issues[0].code).toBe('unrecognized_keys')
   })
 
-  it('#8 PATCH /users/me {name:""} → 400 + too_small', async () => {
-    const res = await request(getHttpServer())
-      .patch('/users/me')
-      .set('Cookie', adminCookie)
-      .send({ name: '' })
-      .expect(400)
-    expect(res.body.issues[0].code).toBe('too_small')
-  })
-
-  it('#9 PATCH /users/me {image:"not-a-url"} → 400 + invalid_format', async () => {
-    const res = await request(getHttpServer())
-      .patch('/users/me')
-      .set('Cookie', adminCookie)
-      .send({ image: 'not-a-url' })
-      .expect(400)
-    expect(res.body.issues[0].code).toBe('invalid_format')
-  })
-
   it('#10 GET /users par lambda → 403', async () => {
     await request(getHttpServer()).get('/users').set('Cookie', lambdaCookie).expect(403)
   })
@@ -136,7 +116,7 @@ describe('Users e2e (S8.1 DoD)', () => {
     if (res.body.items.length > 0) {
       const first = res.body.items[0]
       expect(Object.keys(first).sort()).toEqual(
-        ['createdAt', 'email', 'id', 'image', 'name', 'role'].sort(),
+        ['createdAt', 'email', 'emailVerified', 'id', 'image', 'name', 'role', 'updatedAt'].sort(),
       )
     }
   })

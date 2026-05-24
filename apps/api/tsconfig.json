@@ -1,5 +1,5 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "@fluch/tsconfig/api.json",
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",

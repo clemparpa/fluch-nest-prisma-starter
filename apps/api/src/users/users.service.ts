@@ -1,9 +1,8 @@
+import type { PaginationQuery, UpdateUserInput } from '@fluch/api-contracts'
 import { Injectable, NotFoundException } from '@nestjs/common'
-import type { PaginationDto } from '@/common/dto/pagination.dto'
 import type { Prisma } from '@/generated/prisma/client'
 // biome-ignore lint/style/useImportType: needed at runtime for Nest DI (emitDecoratorMetadata)
 import { PrismaService } from '@/prisma/prisma.service'
-import type { UpdateUserDto } from './dto/update-user.dto'
 
 @Injectable()
 export class UsersService {
@@ -15,14 +14,14 @@ export class UsersService {
     return user
   }
 
-  updateMe(userId: string, dto: UpdateUserDto) {
+  updateMe(userId: string, dto: UpdateUserInput) {
     return this.prisma.user.update({
       where: { id: userId },
       data: dto as Prisma.UserUpdateInput,
     })
   }
 
-  async findMany({ page, limit }: PaginationDto) {
+  async findMany({ page, limit }: PaginationQuery) {
     const [items, total] = await this.prisma.$transaction([
       this.prisma.user.findMany({
         skip: (page - 1) * limit,

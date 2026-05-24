@@ -21,6 +21,7 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
+    "@fluch/api-contracts": "workspace:*",
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.0",
@@ -29,8 +30,9 @@
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@thallesp/nestjs-better-auth": "^2.6.0",
+    "@ts-rest/core": "3.53.0-rc.1",
+    "@ts-rest/nest": "3.53.0-rc.1",
     "better-auth": "^1.6.11",
-    "nestjs-zod": "^5.4.0",
     "pg": "^8.20.0",
     "prisma-zod-generator": "^2.1.4",
     "reflect-metadata": "^0.2.0",
@@ -38,6 +40,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@fluch/tsconfig": "workspace:*",
     "@nestjs/cli": "^11.0.0",
     "@nestjs/testing": "^11.1.23",
     "@swc/core": "^1.15.33",

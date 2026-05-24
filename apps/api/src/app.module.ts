@@ -1,8 +1,7 @@
 import { Module } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core'
 import { AuthModule } from '@thallesp/nestjs-better-auth'
-import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod'
+import { TsRestModule } from '@ts-rest/nest'
 import { createAuth } from './auth/auth.config'
 import { CommonModule } from './common/common.module'
 import { ConfigModule } from './config/config.module'
@@ -19,6 +18,7 @@ import { UsersModule } from './users/users.module'
     CommonModule,
     PrismaModule,
     UsersModule,
+    TsRestModule.register({ validateResponses: true, isGlobal: true }),
     AuthModule.forRootAsync({
       imports: [PrismaModule, ConfigModule],
       inject: [PrismaService, ConfigService],
@@ -36,10 +36,6 @@ import { UsersModule } from './users/users.module'
         },
       }),
     }),
-  ],
-  providers: [
-    { provide: APP_PIPE, useClass: ZodValidationPipe },
-    { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
   ],
 })
 export class AppModule {}

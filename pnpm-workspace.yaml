@@ -10,3 +10,10 @@ allowBuilds:
   esbuild: true
   prisma: true
   prisma-zod-generator: false
+
+peerDependencyRules:
+  allowedVersions:
+    # @ts-rest/* 3.52.x ne déclare encore que zod ^3.22 en peer, mais leur usage
+    # interne (parse/safeParse/_def) est compatible zod 4. Retire le warning.
+    '@ts-rest/nest>zod': '^4.0.0'
+    '@ts-rest/core>zod': '^4.0.0'
