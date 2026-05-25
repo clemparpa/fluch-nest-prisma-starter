@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config'
 import { AuthModule } from '@thallesp/nestjs-better-auth'
 import { TsRestModule } from '@ts-rest/nest'
 import { RbacFixturesModule } from './_rbac-fixtures/rbac-fixtures.module'
+import { TenantFixturesModule } from './_tenant-fixtures/tenant-fixtures.module'
 import { createAuth } from './auth/auth.config'
 import { CommonModule } from './common/common.module'
 import { ConfigModule } from './config/config.module'
@@ -37,7 +38,7 @@ import { UsersModule } from './users/users.module'
         },
       }),
     }),
-    ...(process.env.NODE_ENV !== 'production' ? [RbacFixturesModule] : []),
+    ...(process.env.NODE_ENV !== 'production' ? [RbacFixturesModule, TenantFixturesModule] : []),
   ],
 })
 export class AppModule {}

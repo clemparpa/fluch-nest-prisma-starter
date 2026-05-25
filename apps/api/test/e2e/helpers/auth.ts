@@ -76,6 +76,6 @@ export async function addOrgMember(
 ): Promise<void> {
   const prisma = getApp().get(UnsafePrismaService)
   await prisma.member.create({
-    data: { id: randomUUID(), organizationId, userId, role },
+    data: { id: randomUUID(), organizationId, userId, role, createdAt: new Date() },
   })
 }
