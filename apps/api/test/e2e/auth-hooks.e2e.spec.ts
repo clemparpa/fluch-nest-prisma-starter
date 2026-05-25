@@ -1,5 +1,6 @@
+import { Logger } from '@nestjs/common'
 import request from 'supertest'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { UnsafePrismaService } from '@/prisma/unsafe-prisma.service'
 import { getApp, getHttpServer } from './helpers/app'
 import { makeTestEmail, signUp } from './helpers/auth'
@@ -49,5 +50,21 @@ describe('Auth hooks e2e (S8.7 — user.created → default org)', () => {
     })
     expect(membership).not.toBeNull()
     expect(membership?.organization.slug).toMatch(/^workspace-[a-f0-9]{8}$/)
+  })
+
+  it('#3 Adding a second listener (welcome-email) runs on signup without touching the hook', async () => {
+    // Proves the event-emitter pattern's pluggability: adding a side effect
+    // = adding a listener provider. The hook stays untouched.
+    const logSpy = vi.spyOn(Logger.prototype, 'log')
+
+    const email = makeTestEmail('welcome')
+    await signUp(email, 'hooks12345678', 'Welcome User')
+
+    const welcomeCall = logSpy.mock.calls.find(
+      ([msg]) => typeof msg === 'string' && msg.includes(`Would send welcome email to ${email}`),
+    )
+    expect(welcomeCall, 'WelcomeEmailListener should have logged the placeholder').toBeDefined()
+
+    logSpy.mockRestore()
   })
 })
