@@ -42,7 +42,19 @@ describe('Users e2e (S8.1 DoD)', () => {
       createdAt: expect.any(String),
     })
     expect(Object.keys(res.body).sort()).toEqual(
-      ['createdAt', 'email', 'emailVerified', 'id', 'image', 'name', 'role', 'updatedAt'].sort(),
+      [
+        'banExpires',
+        'banReason',
+        'banned',
+        'createdAt',
+        'email',
+        'emailVerified',
+        'id',
+        'image',
+        'name',
+        'role',
+        'updatedAt',
+      ].sort(),
     )
     expect(res.body).not.toHaveProperty('password')
     expect(res.body).not.toHaveProperty('accounts')
@@ -116,7 +128,19 @@ describe('Users e2e (S8.1 DoD)', () => {
     if (res.body.items.length > 0) {
       const first = res.body.items[0]
       expect(Object.keys(first).sort()).toEqual(
-        ['createdAt', 'email', 'emailVerified', 'id', 'image', 'name', 'role', 'updatedAt'].sort(),
+        [
+          'banExpires',
+          'banReason',
+          'banned',
+          'createdAt',
+          'email',
+          'emailVerified',
+          'id',
+          'image',
+          'name',
+          'role',
+          'updatedAt',
+        ].sort(),
       )
     }
   })

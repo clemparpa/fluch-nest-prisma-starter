@@ -1,12 +1,11 @@
 import type { PaginationQuery, UpdateUserInput } from '@fluch/api-contracts'
 import { Injectable, NotFoundException } from '@nestjs/common'
 import type { Prisma } from '@/generated/prisma/client'
-// biome-ignore lint/style/useImportType: needed at runtime for Nest DI (emitDecoratorMetadata)
-import { PrismaService } from '@/prisma/prisma.service'
+import { InjectPrisma, type TenantScopedPrismaClient } from '@/prisma/prisma.module'
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@InjectPrisma() private readonly prisma: TenantScopedPrismaClient) {}
 
   async findById(id: string) {
     const user = await this.prisma.user.findUnique({ where: { id } })

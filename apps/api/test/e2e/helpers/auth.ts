@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import request from 'supertest'
-import { PrismaService } from '@/prisma/prisma.service'
+import { UnsafePrismaService } from '@/prisma/unsafe-prisma.service'
 import { getApp, getHttpServer } from './app'
 
 export const ADMIN_EMAIL = 'admin@local.dev'
@@ -74,8 +74,8 @@ export async function addOrgMember(
   userId: string,
   role: 'member' | 'admin' | 'owner',
 ): Promise<void> {
-  const prisma = getApp().get(PrismaService)
+  const prisma = getApp().get(UnsafePrismaService)
   await prisma.member.create({
-    data: { id: randomUUID(), organizationId, userId, role },
+    data: { id: randomUUID(), organizationId, userId, role, createdAt: new Date() },
   })
 }

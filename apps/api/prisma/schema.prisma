@@ -168,3 +168,15 @@ model TeamMember {
 
   @@map("teamMember")
 }
+
+// Dev-only fixture used by the tenant-isolation e2e suite (S8.6).
+// Will be removed in S8.8 when the first real tenant-scoped business module ships.
+model TestPost {
+  id             String   @id @default(cuid())
+  title          String
+  organizationId String
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([organizationId])
+  @@map("_test_post")
+}

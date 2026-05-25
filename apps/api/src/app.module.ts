@@ -3,13 +3,14 @@ import { ConfigService } from '@nestjs/config'
 import { AuthModule } from '@thallesp/nestjs-better-auth'
 import { TsRestModule } from '@ts-rest/nest'
 import { RbacFixturesModule } from './_rbac-fixtures/rbac-fixtures.module'
+import { TenantFixturesModule } from './_tenant-fixtures/tenant-fixtures.module'
 import { createAuth } from './auth/auth.config'
 import { CommonModule } from './common/common.module'
 import { ConfigModule } from './config/config.module'
 import type { Env } from './config/env.schema'
 import { AppLoggerModule } from './logger/logger.module'
 import { PrismaModule } from './prisma/prisma.module'
-import { PrismaService } from './prisma/prisma.service'
+import { UnsafePrismaService } from './prisma/unsafe-prisma.service'
 import { UsersModule } from './users/users.module'
 
 @Module({
@@ -22,8 +23,8 @@ import { UsersModule } from './users/users.module'
     TsRestModule.register({ validateResponses: true, isGlobal: true }),
     AuthModule.forRootAsync({
       imports: [PrismaModule, ConfigModule],
-      inject: [PrismaService, ConfigService],
-      useFactory: (prisma: PrismaService, config: ConfigService<Env, true>) => ({
+      inject: [UnsafePrismaService, ConfigService],
+      useFactory: (prisma: UnsafePrismaService, config: ConfigService<Env, true>) => ({
         auth: createAuth(prisma, {
           NODE_ENV: config.get('NODE_ENV', { infer: true }),
           BETTER_AUTH_SECRET: config.get('BETTER_AUTH_SECRET', { infer: true }),
@@ -37,7 +38,7 @@ import { UsersModule } from './users/users.module'
         },
       }),
     }),
-    ...(process.env.NODE_ENV !== 'production' ? [RbacFixturesModule] : []),
+    ...(process.env.NODE_ENV !== 'production' ? [RbacFixturesModule, TenantFixturesModule] : []),
   ],
 })
 export class AppModule {}

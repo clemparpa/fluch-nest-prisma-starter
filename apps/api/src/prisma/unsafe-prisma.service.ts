@@ -6,8 +6,8 @@ import type { Env } from '@/config/env.schema'
 import { PrismaClient } from '@/generated/prisma/client'
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
-  private readonly logger = new Logger(PrismaService.name)
+export class UnsafePrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(UnsafePrismaService.name)
 
   constructor(config: ConfigService<Env, true>) {
     super({
