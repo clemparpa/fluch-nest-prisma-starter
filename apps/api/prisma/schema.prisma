@@ -92,7 +92,7 @@ model Verification {
 }
 
 model Organization {
-  id                String             @id
+  id                String             @id @default(cuid(2))
   name              String
   slug              String             @unique
   logo              String?
@@ -107,7 +107,7 @@ model Organization {
 }
 
 model Member {
-  id             String       @id
+  id             String       @id @default(cuid(2))
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId         String
   organization   Organization @relation(fields: [organizationId], references: [id])

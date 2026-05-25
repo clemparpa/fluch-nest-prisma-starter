@@ -7,6 +7,7 @@ import {
   getAdminCookie,
   makeTestEmail,
   signUp,
+  unsetActiveOrg,
 } from './helpers/auth'
 import { resetTestOrgs, resetTestUsers } from './helpers/db'
 
@@ -79,7 +80,10 @@ describe('RBAC e2e', () => {
   })
 
   it('#7 no active org → @OrgRoles([owner]) → 403', async () => {
-    const { cookie } = await signUp(makeTestEmail('rbac-noorg'), 'rbac12345678')
+    const { cookie: rawCookie } = await signUp(makeTestEmail('rbac-noorg'), 'rbac12345678')
+    // Since S8.7 signup auto-creates a default org. Clear it to exercise the
+    // "no active org" path.
+    const cookie = await unsetActiveOrg(rawCookie)
     await request(getHttpServer()).get('/_rbac/org-owner').set('Cookie', cookie).expect(403)
   })
 
