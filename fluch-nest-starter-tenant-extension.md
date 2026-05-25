@@ -153,48 +153,19 @@ export const runAsAdmin = <T>(fn: () => Promise<T>): Promise<T> =>
 
 ---
 
-## 3. Le middleware Nest
+## 3. L'interceptor Nest (PAS un middleware)
 
-```ts
-// src/tenant/tenant.middleware.ts
-import { Injectable, NestMiddleware } from '@nestjs/common';
-import type { Request, Response, NextFunction } from 'express';
-import { tenantStorage } from './tenant.storage';
+**Pourquoi un interceptor, pas un middleware.** Les middlewares Nest s'exécutent **avant** les guards. Or `req.session` est attaché par l'AuthGuard de `@thallesp/nestjs-better-auth`. Un middleware classique n'aurait donc pas accès à la session sans refaire un round-trip `auth.api.getSession()`. Un interceptor global s'exécute après les guards : `req.session` est dispo.
 
-@Injectable()
-export class TenantMiddleware implements NestMiddleware {
-  use(req: Request, _res: Response, next: NextFunction) {
-    // req.session est attaché par le AuthGuard de @thallesp/nestjs-better-auth
-    const session = (req as any).session;
-    const tenantId = session?.session?.activeOrganizationId ?? null;
+**3 états ALS stricts — le piège à éviter absolument :**
 
-    // tenantId null = utilisateur authentifié sans org active (ex: signup juste fait)
-    //   → on bypass. À adapter selon la politique du SaaS.
-    // En pratique : pour les routes qui REQUIERENT un tenant, ajouter un guard
-    //   qui vérifie la présence de activeOrganizationId.
-    tenantStorage.run({ tenantId }, () => next());
-  }
-}
-```
+| Lecture de la session | Action interceptor | État ALS observé par l'extension |
+| --- | --- | --- |
+| `activeOrganizationId` = `string` non-vide | `tenantStorage.run({ tenantId }, ...)` | `string` → filtre `organizationId` injecté |
+| `activeOrganizationId` absent / falsy | **ne pas créer de store du tout** (juste `next.handle()`) | `getStore() === undefined` → l'extension **throw** si modèle tenant-scoped touché |
+| Bypass admin explicite (script, job) | `runAsAdmin(() => ...)` | `{ tenantId: null }` → bypass, args inchangés |
 
-**Enregistrement** :
-
-```ts
-// src/app.module.ts
-@Module({ /* ... */ })
-export class AppModule implements NestModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer.apply(TenantMiddleware).forRoutes('*');
-  }
-}
-```
-
-**Ordre d'exécution important.** Le middleware doit s'exécuter **après** que le AuthGuard de thallesp ait attaché la session à `req.session`. En pratique, Nest exécute les middlewares avant les guards — donc on **ne peut pas** lire la session dans le middleware classique. Deux options :
-
-1. **Lire la session via better-auth dans le middleware** (`auth.api.getSession({ headers: fromNodeHeaders(req.headers) })`) → bypass de l'ordre Nest, mais round-trip supplémentaire.
-2. **Utiliser un `Interceptor` global** (`APP_INTERCEPTOR`) au lieu d'un middleware → s'exécute **après** les guards, donc `req.session` est dispo.
-
-**Recommandation : option 2 (Interceptor).** Plus propre, pas de duplication d'appel à getSession.
+**Le bug `?? null`.** L'ancienne version de ce doc faisait `const tenantId = session?.session?.activeOrganizationId ?? null` puis `tenantStorage.run({ tenantId }, next)`. Conséquence : une requête sans org active enregistrait un store `{ tenantId: null }` — exactement la sémantique de bypass admin. Une route métier touchant un modèle tenant-scoped passait alors sans filtre. **Ne jamais coercer `undefined` en `null`** : ce sont deux états sémantiques différents.
 
 ```ts
 // src/tenant/tenant.interceptor.ts
@@ -204,29 +175,70 @@ import { tenantStorage } from './tenant.storage';
 
 @Injectable()
 export class TenantInterceptor implements NestInterceptor {
-  intercept(ctx: ExecutionContext, next: CallHandler): Observable<any> {
+  intercept(ctx: ExecutionContext, next: CallHandler): Observable<unknown> {
     const req = ctx.switchToHttp().getRequest();
-    const tenantId = req.session?.session?.activeOrganizationId ?? null;
+    const orgId = req.session?.session?.activeOrganizationId; // PAS de ?? null
 
-    return new Observable((observer) => {
-      tenantStorage.run({ tenantId }, () => {
-        next.handle().subscribe(observer);
+    if (!orgId) {
+      return next.handle(); // pas de store → l'extension throw défensivement
+    }
+
+    return new Observable((subscriber) => {
+      tenantStorage.run({ tenantId: orgId }, () => {
+        next.handle().subscribe(subscriber);
       });
     });
   }
 }
 ```
 
-Enregistrement global :
+Enregistré dans `CommonModule` aux côtés des autres `APP_INTERCEPTOR` (RequestId, Logging, Timeout) :
 
 ```ts
-// src/app.module.ts
-providers: [
-  { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },
-],
+{ provide: APP_INTERCEPTOR, useClass: TenantInterceptor },
 ```
 
-**Note sur les routes `@AllowAnonymous`.** Pas de session → `tenantId = null` → bypass. Si une route anonyme accède à un modèle tenant-scoped (rare mais possible : ex. page publique listant les produits d'une org), l'extension renverra null et l'opération passera sans filtre — ce qui est probablement faux. **À traiter au cas par cas** : soit la route exige explicitement un tenantId (param d'URL), soit elle ne touche pas aux modèles tenant-scoped.
+**Pattern `Observable` wrap.** La souscription au `next.handle()` doit être faite **à l'intérieur** du callback `tenantStorage.run()`. Un simple `return tenantStorage.run(..., () => next.handle())` perd le contexte ALS dès le premier `await` du handler.
+
+**Routes sans org active.** Si une route métier tenant-scoped est appelée par un user sans `activeOrganizationId` (ex: sign-up juste fait), l'extension **throw 500**. Pour renvoyer un **400 propre** à la place, décorer la route avec `@RequiresOrg()` (cf. section dédiée).
+
+### `@RequiresOrg()` — garde-fou opt-in
+
+Décorateur + guard qui valident la présence de `activeOrganizationId` **avant** que l'extension n'ait à lever une erreur. Opt-in par handler/controller, pas global (sinon les routes auth/health/anonyme casseraient).
+
+```ts
+// src/common/decorators/requires-org.decorator.ts
+@Injectable()
+export class RequiresOrgGuard implements CanActivate {
+  constructor(private reflector: Reflector) {}
+  canActivate(ctx: ExecutionContext): boolean {
+    const flag = this.reflector.getAllAndOverride<boolean>('requires-org',
+      [ctx.getHandler(), ctx.getClass()]);
+    if (!flag) return true;
+    const req = ctx.switchToHttp().getRequest();
+    if (!req.session?.session?.activeOrganizationId) {
+      throw new BadRequestException('No active organization on session');
+    }
+    return true;
+  }
+}
+
+export const RequiresOrg = () =>
+  applyDecorators(SetMetadata('requires-org', true), UseGuards(RequiresOrgGuard));
+```
+
+Usage :
+
+```ts
+@Controller('posts')
+export class PostsController {
+  @Post()
+  @RequiresOrg()  // 400 si pas d'org active
+  create(@Body() dto: CreatePostDto) { ... }
+}
+```
+
+**Note sur les routes `@AllowAnonymous`.** Pas de session → pas de store → l'extension throw si un modèle tenant-scoped est touché (bon). Si la route doit légitimement accéder à des données scopées par tenant via un param d'URL (ex: page publique d'une org), elle peut wrapper l'appel dans `runAsAdmin(...)` après avoir validé le tenant elle-même.
 
 ---
 
@@ -388,34 +400,36 @@ Le Factory provider qu'on retient :
 3. Garde une porte de sortie explicitement nommée pour les cas admin légitimes.
 4. Le seul "coût" : injection par token (`@InjectPrisma()`) au lieu de par classe — ~12 caractères de plus, pattern standard Nest (cf. `@InjectRepository()` de TypeORM).
 
-### Garde-fou : règle ESLint qui interdit `UnsafePrismaService` dans les services métier
+### Garde-fou : convention (lint rule reportée)
 
-```js
-// eslint.config.js
-{
-  files: ['src/**/*.service.ts', 'src/**/*.controller.ts'],
-  rules: {
-    'no-restricted-imports': ['error', {
-      paths: [{
-        name: '@/prisma/unsafe-prisma.service',
-        importNames: ['UnsafePrismaService'],
-        message:
-          'UnsafePrismaService bypasses tenant isolation. ' +
-          'Use @InjectPrisma() with TenantScopedPrismaClient instead. ' +
-          'If you really need the raw client (cross-tenant job, admin script), ' +
-          'add this file to the allowlist override.',
-      }],
-    }],
-  },
-},
-// Override pour les chemins autorisés
-{
-  files: ['src/jobs/**', 'prisma/seed.ts', 'scripts/**'],
-  rules: { 'no-restricted-imports': 'off' },
-}
+**Décision S8.6 : pas d'enforcement automatique pour l'instant.** Le starter utilise Biome 2.x, qui ne supporte pas `noRestrictedImports` avec patterns aussi fins qu'ESLint. Plutôt que d'ajouter ESLint en parallèle de Biome juste pour cette règle (tooling doublé), on documente la convention ici et on s'appuie sur la revue de PR + le préfixe `Unsafe` du nom de classe.
+
+**Convention à respecter :**
+
+- Dans `apps/api/src/**/*.service.ts` et `apps/api/src/**/*.controller.ts` : injecter `@InjectPrisma() prisma: TenantScopedPrismaClient`. Ne **jamais** injecter `UnsafePrismaService` directement.
+- Chemins autorisés à utiliser `UnsafePrismaService` (ou `new PrismaClient()`) : `apps/api/prisma/seed.ts`, `apps/api/src/jobs/**`, `apps/api/scripts/**`.
+
+**Pourquoi le préfixe `Unsafe` est suffisant en attendant.** Un dev qui voit `private readonly prisma: UnsafePrismaService` dans une PR doit avoir un réflexe. Si la review laisse passer, c'est un problème de process plus que de lint.
+
+**À implémenter quand justifié :**
+
+Option recommandée (zero new tooling) — script CI grep :
+
+```sh
+# scripts/check-unsafe-prisma.sh
+#!/bin/sh
+matches=$(grep -rEn "UnsafePrismaService" \
+  --include='*.service.ts' --include='*.controller.ts' \
+  apps/api/src \
+  | grep -v 'apps/api/src/jobs/' || true)
+if [ -n "$matches" ]; then
+  echo "ERROR: UnsafePrismaService imported in business code:"
+  echo "$matches"
+  exit 1
+fi
 ```
 
-Effet : tout import accidentel de `UnsafePrismaService` dans un service ou controller métier échoue au lint avec un message explicite. Liste blanche restreinte aux dossiers légitimes.
+Branché en `lint-staged` + en CI. Alternative : ajouter ESLint avec uniquement la règle `no-restricted-imports`. À trancher quand le besoin se présente (premier oubli en revue).
 
 ---
 
@@ -483,24 +497,35 @@ await prisma.post.createMany({ data: [/* ... */] });
 
 ---
 
-## 6. Maintenance de `MODELS_WITH_TENANT`
+## 6. Maintenance de `MODELS_WITH_TENANT` — allowlist statique
 
-**Phase 1 (template au démarrage).** Fichier `tenant-models.ts` édité à la main. 5 secondes par modèle. Acceptable jusqu'à 10-15 modèles.
+**Décision** : la liste vit dans `apps/api/src/prisma/tenant-extension.ts` comme constante exportée. Convention : "ajouter le nom du modèle ici dès qu'il porte `organizationId`".
 
-**Phase 2 (croissance).** Script qui parse `schema.prisma`, détecte les modèles avec champ `organizationId String` (ou `tenantId String`), et regénère le fichier `tenant-models.ts`. Intégré dans le hook `postgenerate` de Prisma.
-
-```json
-// prisma.config.ts
-{
-  "generator": {
-    "postGenerate": "tsx scripts/generate-tenant-models.ts"
-  }
-}
+```ts
+// apps/api/src/prisma/tenant-extension.ts
+export const MODELS_WITH_TENANT: ReadonlySet<string> = new Set<string>([
+  'TestPost',  // dev fixture (S8.6), removed in S8.8
+  // 'Post' will arrive in S8.8 — the first real tenant-scoped business module.
+]);
 ```
 
-**Phase 3 (si besoin).** Un mini Prisma generator dédié. Probablement pas nécessaire — le script de phase 2 fait 30 lignes.
+**Pourquoi pas une dérivation DMMF runtime.**
 
-**Décision : commencer phase 1, basculer phase 2 dès qu'on dépasse 5 modèles tenant-scoped.**
+Le plan initial était de générer la liste à partir de `Prisma.dmmf.datamodel.models.filter(m => m.fields.some(f => f.name === 'organizationId'))`. Cassé en Prisma 7 avec le nouveau generator `prisma-client` : `Prisma.dmmf` n'est plus exposé publiquement (cf. [prisma/prisma#27028](https://github.com/prisma/prisma/issues/27028)). Prisma travaille sur une API publique de remplacement mais pas avant 2026.
+
+Alternatives évaluées :
+
+- `getDMMF()` depuis `@prisma/internals` au build time, écrit un fichier généré : fonctionne mais ajoute une dep lourde et un fichier généré supplémentaire.
+- `prisma._runtimeDataModel` runtime : API privée (préfixe `_`), même dette de stabilité que `Prisma.dmmf`.
+- Parser le `schema.prisma` au boot via regex : fragile.
+
+**Bénéfice secondaire de l'allowlist statique.** Plusieurs modèles du plugin `organization` de better-auth (`Member`, `Invitation`, `Team`, `TeamMember`, `OrganizationRole`) portent `organizationId` mais sont **gérés en interne par better-auth** lors du sign-in / list-orgs / set-active. Une dérivation auto les inclurait à tort et casserait le flow auth. Avec une allowlist explicite, ils sont naturellement exclus — pas de denylist à maintenir.
+
+**Risque** : un dev ajoute `organizationId` à un modèle métier et oublie d'ajouter le nom au Set → leak silencieux. Mitigations actuelles :
+1. La revue de PR (le diff sur `tenant-extension.ts` est visible).
+2. À terme : un test CI qui valide que tout modèle Prisma avec champ `organizationId` figure dans le Set (parsing du schema en CI, similaire à l'idée DMMF mais sans casser le runtime).
+
+**Phase 2 (si la liste dépasse 10-15 modèles).** Re-bascule vers une dérivation au build : script `tsx scripts/generate-tenant-models.ts` qui utilise `getDMMF()` de `@prisma/internals` et écrit un fichier généré. Intégré au hook `postinstall`. À implémenter quand le besoin se présente.
 
 ---
 
