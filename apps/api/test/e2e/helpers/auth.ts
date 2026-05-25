@@ -66,6 +66,24 @@ export async function createOrgAndActivate(
 }
 
 /**
+ * Resets `activeOrganizationId` on the user's session.
+ *
+ * Since S8.7, signup automatically creates a default org and pins it as active
+ * on the new session. Tests that exercise the "no active org" branch use this
+ * helper to clear it. Returns the refreshed cookie (the `/set-active` call
+ * issues a new Set-Cookie).
+ */
+export async function unsetActiveOrg(cookie: string): Promise<string> {
+  const res = await request(getHttpServer())
+    .post('/api/auth/organization/set-active')
+    .set('Cookie', cookie)
+    .send({ organizationId: null })
+    .expect(200)
+  const setCookie = res.headers['set-cookie'] as unknown as string[] | undefined
+  return setCookie ? extractAuthCookie(setCookie) : cookie
+}
+
+/**
  * Direct DB insert — bypass the invitation flow for speed in unit-ish tests.
  * The invitation flow itself is covered separately when relevant.
  */

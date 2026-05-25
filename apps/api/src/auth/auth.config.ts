@@ -42,6 +42,11 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
       admin({ ac, roles: { user: sysUser, admin: sysAdmin } }),
       organization({ ac, roles: { member: orgMember, admin: orgAdmin, owner: orgOwner } }),
     ],
+    // Placeholder required by @thallesp/nestjs-better-auth: when any provider
+    // carries `@DatabaseHook()`, the lib expects `databaseHooks` to be set
+    // here so it can mutate it at NestJS onModuleInit. The actual hooks live
+    // in `apps/api/src/auth/hooks/` (UserCreatedHook, SessionActiveOrgHook).
+    databaseHooks: {},
   })
 }
 

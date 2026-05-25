@@ -2,7 +2,7 @@ import request from 'supertest'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { UnsafePrismaService } from '@/prisma/unsafe-prisma.service'
 import { getApp, getHttpServer } from './helpers/app'
-import { createOrgAndActivate, makeTestEmail, signUp } from './helpers/auth'
+import { createOrgAndActivate, makeTestEmail, signUp, unsetActiveOrg } from './helpers/auth'
 import { resetTestOrgs, resetTestPosts, resetTestUsers } from './helpers/db'
 
 describe('Tenant isolation e2e', () => {
@@ -81,7 +81,10 @@ describe('Tenant isolation e2e', () => {
   })
 
   it('#4 user without active org on /_tenant/posts → 400 (RequiresOrgGuard)', async () => {
-    const { cookie } = await signUp(makeTestEmail('noorg-iso'), 'iso123456789012')
+    const { cookie: rawCookie } = await signUp(makeTestEmail('noorg-iso'), 'iso123456789012')
+    // Since S8.7 signup auto-creates a default org. Clear it to exercise the
+    // "no active org" path.
+    const cookie = await unsetActiveOrg(rawCookie)
     await request(getHttpServer()).get('/_tenant/posts').set('Cookie', cookie).expect(400)
   })
 
