@@ -10,6 +10,7 @@ import { CommonModule } from './common/common.module'
 import { ConfigModule } from './config/config.module'
 import type { Env } from './config/env.schema'
 import { AppLoggerModule } from './logger/logger.module'
+import { PostsModule } from './posts/posts.module'
 import { PrismaModule } from './prisma/prisma.module'
 import { UnsafePrismaService } from './prisma/unsafe-prisma.service'
 import { UsersModule } from './users/users.module'
@@ -21,6 +22,7 @@ import { UsersModule } from './users/users.module'
     CommonModule,
     PrismaModule,
     UsersModule,
+    PostsModule,
     EventEmitterModule.forRoot(),
     TsRestModule.register({ validateResponses: true, isGlobal: true }),
     AuthModule.forRootAsync({

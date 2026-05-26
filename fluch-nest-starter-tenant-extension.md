@@ -504,8 +504,7 @@ await prisma.post.createMany({ data: [/* ... */] });
 ```ts
 // apps/api/src/prisma/tenant-extension.ts
 export const MODELS_WITH_TENANT: ReadonlySet<string> = new Set<string>([
-  'TestPost',  // dev fixture (S8.6), removed in S8.8
-  // 'Post' will arrive in S8.8 — the first real tenant-scoped business module.
+  'Post',  // see apps/api/src/posts/
 ]);
 ```
 
@@ -587,3 +586,47 @@ Procédure quand un modèle existant doit devenir tenant-scoped :
 - **Auditer systématiquement les `$queryRaw` / `$executeRaw`** lors de chaque code review touchant un modèle tenant-scoped. L'extension n'intercepte pas le SQL raw.
 - **Documenter dans le README du template** que l'injection par défaut est `@InjectPrisma() prisma: TenantScopedPrismaClient`, avec un exemple de leak pour montrer le pourquoi.
 - **Si un dev injecte `UnsafePrismaService` dans un service métier en désactivant la règle ESLint** (`// eslint-disable-next-line`), le PR review doit le challenger systématiquement et exiger une justification écrite dans le commit ou un commentaire dédié.
+
+---
+
+## 11. Référence : module Posts (S8.8)
+
+Le premier module métier tenant-scoped concret. Sert de template pour tous les futurs modules.
+
+**Chemins** :
+
+- Contract TS-Rest : [packages/api-contracts/src/posts/contract.ts](packages/api-contracts/src/posts/contract.ts)
+- Service / controller : [apps/api/src/posts/](apps/api/src/posts/)
+- Tests e2e : [apps/api/test/e2e/posts.e2e.spec.ts](apps/api/test/e2e/posts.e2e.spec.ts)
+
+**Pattern ownership row-level + bypass RBAC** (update / delete).
+
+L'extension tenant filtre déjà `organizationId` au niveau Prisma — l'isolation entre orgs est garantie. Ce que l'extension ne couvre PAS : l'ownership row-level *à l'intérieur* d'une org (auteur du post vs autres membres). Cette logique est **dans le service** :
+
+```ts
+// apps/api/src/posts/posts.service.ts
+async update(id: string, authorId: string, headers: Headers, dto: UpdatePostInput) {
+  if (await this.canBypassOwnership(headers, 'update')) {
+    // RBAC bypass: org admin/owner peuvent éditer n'importe quel post de leur org
+    return this.prisma.post.update({ where: { id }, data: dto })
+  }
+  // Sinon : `where: { id, authorId }` — un non-auteur récupère `count === 0` → 404
+  const [updated] = await this.prisma.post.updateManyAndReturn({
+    where: { id, authorId }, data: dto,
+  })
+  if (!updated) throw new NotFoundException('Post not found')
+  return updated
+}
+
+private async canBypassOwnership(headers: Headers, action: 'update' | 'delete') {
+  const res = await this.authService.api.hasPermission({
+    body: { permissions: { post: [action] } },
+    headers,
+  })
+  return res?.success === true
+}
+```
+
+**Pourquoi pas un décorateur `@MemberHasPermission({ post: ['update'] })`** sur le handler ? Il bloquerait un `orgMember` éditant SON propre post (le guard throw 403 avant le service). On veut au contraire : "auteur OK toujours, non-auteur OK uniquement si admin/owner".
+
+`@MemberHasPermission` reste utilisé sur `create`/`list`/`findById` (sémantique sans ambiguïté).
