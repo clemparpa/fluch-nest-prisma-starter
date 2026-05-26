@@ -10,8 +10,8 @@
  * shape of the argument and no real validation happens.
  *
  * Usage:
- *   prisma.testPost.create({
- *     data: tenantScoped<Prisma.TestPostCreateInput>({ title: body.title }),
+ *   prisma.post.create({
+ *     data: tenantScoped<Prisma.PostCreateInput>({ title, content, author: { connect: { id } } }),
  *   })
  *
  * Only needed for ops where `organizationId` is statically required by Prisma

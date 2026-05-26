@@ -20,8 +20,7 @@ import { Prisma } from '@/generated/prisma/client'
  * better-auth exclusion problem entirely.
  */
 export const MODELS_WITH_TENANT: ReadonlySet<string> = new Set<string>([
-  'TestPost', // dev-only fixture used by the tenant-isolation e2e suite; removed in S8.8.
-  // 'Post' will be added in S8.8 when the first real tenant-scoped business module ships.
+  'Post', // see apps/api/src/posts/
 ])
 
 const READ_OPS = new Set([

@@ -35,6 +35,7 @@ model User {
   members       Member[]
   invitations   Invitation[]
   teamMembers   TeamMember[]
+  posts         Post[]
 
   @@unique([email])
   @@map("user")
@@ -102,6 +103,7 @@ model Organization {
   invitations       Invitation[]
   organizationRoles OrganizationRole[]
   teams             Team[]
+  posts             Post[]
 
   @@map("organization")
 }
@@ -169,14 +171,19 @@ model TeamMember {
   @@map("teamMember")
 }
 
-// Dev-only fixture used by the tenant-isolation e2e suite (S8.6).
-// Will be removed in S8.8 when the first real tenant-scoped business module ships.
-model TestPost {
-  id             String   @id @default(cuid())
+model Post {
+  id             String       @id @default(cuid(2))
   title          String
+  content        String
+  published      Boolean      @default(false)
+  authorId       String
   organizationId String
-  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  author         User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @db.Timestamptz(3)
 
   @@index([organizationId])
-  @@map("_test_post")
+  @@index([authorId])
+  @@map("post")
 }

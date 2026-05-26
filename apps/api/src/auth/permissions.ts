@@ -6,12 +6,14 @@ const statement = {
   organization: ['read', 'update', 'delete'],
   member: ['create', 'read', 'update', 'delete'],
   invitation: ['create', 'read', 'cancel'],
+  post: ['create', 'read', 'update', 'delete'],
 } as const
 
 export const ac = createAccessControl(statement)
 
 export const orgMember = ac.newRole({
   organization: ['read'],
+  post: ['create', 'read'],
 })
 
 export const orgAdmin = ac.newRole({
@@ -19,6 +21,7 @@ export const orgAdmin = ac.newRole({
   member: ['create', 'read', 'update', 'delete'],
   invitation: ['create', 'read', 'cancel'],
   user: ['read', 'update'],
+  post: ['create', 'read', 'update', 'delete'],
 })
 
 export const orgOwner = ac.newRole({
@@ -26,6 +29,7 @@ export const orgOwner = ac.newRole({
   member: ['create', 'read', 'update', 'delete'],
   invitation: ['create', 'read', 'cancel'],
   user: ['read', 'update', 'delete'],
+  post: ['create', 'read', 'update', 'delete'],
 })
 
 export const sysUser = ac.newRole({
