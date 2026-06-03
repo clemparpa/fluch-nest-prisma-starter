@@ -31,11 +31,14 @@ export default defineConfig({
           globals: true,
           environment: 'node',
           include: ['test/**/*.e2e.spec.ts'],
+          globalSetup: ['test/globalSetup.ts'],
           setupFiles: ['test/setup.ts'],
           pool: 'forks',
+          // Container Postgres unique, donc un seul fork à la fois pour éviter
+          // les collisions entre fichiers (TRUNCATE concurrent + seedAdmin).
           fileParallelism: false,
           testTimeout: 10_000,
-          hookTimeout: 30_000,
+          hookTimeout: 60_000,
         },
       },
     ],

@@ -1,9 +1,9 @@
 import request from 'supertest'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { UnsafePrismaService } from '@/prisma/unsafe-prisma.service'
 import { getApp, getHttpServer } from './helpers/app'
 import { createOrgAndActivate, makeTestEmail, signUp, unsetActiveOrg } from './helpers/auth'
-import { resetPosts, resetTestOrgs, resetTestUsers } from './helpers/db'
+import { resetDb } from './helpers/db'
 
 describe('Tenant isolation e2e', () => {
   let aliceCookie: string
@@ -13,9 +13,7 @@ describe('Tenant isolation e2e', () => {
   let aliceOnlyPostId: string
 
   beforeAll(async () => {
-    await resetPosts()
-    await resetTestUsers()
-    await resetTestOrgs()
+    await resetDb()
 
     const alice = await signUp(makeTestEmail('alice-iso'), 'iso123456789012')
     const aliceOrg = await createOrgAndActivate(alice.cookie, `test-${Date.now()}-iso-a`)
@@ -26,12 +24,6 @@ describe('Tenant isolation e2e', () => {
     const bobOrg = await createOrgAndActivate(bob.cookie, `test-${Date.now()}-iso-b`)
     bobCookie = bobOrg.cookie
     bobOrgId = bobOrg.orgId
-  })
-
-  afterAll(async () => {
-    await resetPosts()
-    await resetTestUsers()
-    await resetTestOrgs()
   })
 
   it('#1 Alice creates a Post → DB row carries her organizationId', async () => {

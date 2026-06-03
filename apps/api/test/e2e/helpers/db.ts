@@ -1,22 +1,34 @@
+import request from 'supertest'
 import { UnsafePrismaService } from '@/prisma/unsafe-prisma.service'
-import { getApp } from './app'
+import { getApp, getHttpServer } from './app'
+import { ADMIN_EMAIL, ADMIN_PASSWORD } from './auth'
 
-export async function resetTestUsers(): Promise<void> {
+const TABLES = [
+  'post',
+  'invitation',
+  'organizationRole',
+  'teamMember',
+  'team',
+  'member',
+  'organization',
+  'session',
+  'verification',
+  'account',
+  'user',
+] as const
+
+export async function resetDb(): Promise<void> {
   const prisma = getApp().get(UnsafePrismaService)
-  await prisma.user.deleteMany({ where: { email: { endsWith: '@test.local' } } })
+  const list = TABLES.map((t) => `"${t}"`).join(', ')
+  await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`)
+  await seedAdmin()
 }
 
-export async function resetTestOrgs(): Promise<void> {
+async function seedAdmin(): Promise<void> {
+  await request(getHttpServer())
+    .post('/api/auth/sign-up/email')
+    .send({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD, name: 'Admin Dev' })
+    .expect(200)
   const prisma = getApp().get(UnsafePrismaService)
-  // Legacy explicit cleanup: orgs created with `test-*` slugs by helpers.
-  await prisma.organization.deleteMany({ where: { slug: { startsWith: 'test-' } } })
-  // Orphan cleanup: default orgs auto-created at signup get a `<name>-<hex>`
-  // slug that doesn't match the prefix above. Once `resetTestUsers` has run,
-  // their Member rows cascade-delete and the org is left member-less.
-  await prisma.organization.deleteMany({ where: { members: { none: {} } } })
-}
-
-export async function resetPosts(): Promise<void> {
-  const prisma = getApp().get(UnsafePrismaService)
-  await prisma.post.deleteMany({})
+  await prisma.user.update({ where: { email: ADMIN_EMAIL }, data: { role: 'admin' } })
 }

@@ -9,9 +9,12 @@ allowBuilds:
   '@scarf/scarf': false
   '@swc/core': true
   better-sqlite3: false
+  cpu-features: true
   esbuild: true
   prisma: true
   prisma-zod-generator: false
+  protobufjs: true
+  ssh2: true
 
 peerDependencyRules:
   allowedVersions:

@@ -1,5 +1,5 @@
 import request from 'supertest'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { getHttpServer } from './helpers/app'
 import {
   ADMIN_EMAIL,
@@ -8,11 +8,10 @@ import {
   getAdminCookie,
   makeTestEmail,
 } from './helpers/auth'
-import { resetTestUsers } from './helpers/db'
+import { resetDb } from './helpers/db'
 
 describe('Auth e2e', () => {
-  beforeAll(resetTestUsers)
-  afterAll(resetTestUsers)
+  beforeAll(resetDb)
 
   it('#1 POST /api/auth/sign-up/email valide → 200 + Set-Cookie session + user.id', async () => {
     const email = makeTestEmail('signup')
