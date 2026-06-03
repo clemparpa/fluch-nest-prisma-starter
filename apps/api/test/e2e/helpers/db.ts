@@ -16,7 +16,7 @@ export async function resetTestOrgs(): Promise<void> {
   await prisma.organization.deleteMany({ where: { members: { none: {} } } })
 }
 
-export async function resetTestPosts(): Promise<void> {
+export async function resetPosts(): Promise<void> {
   const prisma = getApp().get(UnsafePrismaService)
-  await prisma.testPost.deleteMany({})
+  await prisma.post.deleteMany({})
 }
