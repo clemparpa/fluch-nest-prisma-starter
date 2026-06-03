@@ -4,7 +4,6 @@ import { EventEmitterModule } from '@nestjs/event-emitter'
 import { AuthModule } from '@thallesp/nestjs-better-auth'
 import { TsRestModule } from '@ts-rest/nest'
 import { RbacFixturesModule } from './_rbac-fixtures/rbac-fixtures.module'
-import { TenantFixturesModule } from './_tenant-fixtures/tenant-fixtures.module'
 import { createAuth } from './auth/auth.config'
 import { AuthEventsModule } from './auth/auth-events.module'
 import { CommonModule } from './common/common.module'
@@ -12,6 +11,7 @@ import { ConfigModule } from './config/config.module'
 import type { Env } from './config/env.schema'
 import { HealthModule } from './health/health.module'
 import { AppLoggerModule } from './logger/logger.module'
+import { PostsModule } from './posts/posts.module'
 import { PrismaModule } from './prisma/prisma.module'
 import { UnsafePrismaService } from './prisma/unsafe-prisma.service'
 import { UsersModule } from './users/users.module'
@@ -24,6 +24,7 @@ import { UsersModule } from './users/users.module'
     PrismaModule,
     UsersModule,
     HealthModule,
+    PostsModule,
     EventEmitterModule.forRoot(),
     TsRestModule.register({ validateResponses: true, isGlobal: true }),
     AuthModule.forRootAsync({
@@ -44,7 +45,7 @@ import { UsersModule } from './users/users.module'
       }),
     }),
     AuthEventsModule,
-    ...(process.env.NODE_ENV !== 'production' ? [RbacFixturesModule, TenantFixturesModule] : []),
+    ...(process.env.NODE_ENV !== 'production' ? [RbacFixturesModule] : []),
   ],
 })
 export class AppModule {}
