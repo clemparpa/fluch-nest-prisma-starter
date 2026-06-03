@@ -1,8 +1,8 @@
 import request from 'supertest'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { getHttpServer } from './helpers/app'
 import { ADMIN_EMAIL, getAdminCookie, makeTestEmail, signUp } from './helpers/auth'
-import { resetTestUsers } from './helpers/db'
+import { resetDb } from './helpers/db'
 
 describe('Users e2e (S8.1 DoD)', () => {
   let adminCookie: string
@@ -11,7 +11,7 @@ describe('Users e2e (S8.1 DoD)', () => {
   let adminUserId: string
 
   beforeAll(async () => {
-    await resetTestUsers()
+    await resetDb()
     adminCookie = await getAdminCookie()
     const adminRes = await request(getHttpServer())
       .get('/users/me')
@@ -22,8 +22,6 @@ describe('Users e2e (S8.1 DoD)', () => {
     lambdaCookie = lambda.cookie
     lambdaUserId = lambda.userId
   })
-
-  afterAll(resetTestUsers)
 
   it('#1 GET /users/me sans cookie → 401', async () => {
     await request(getHttpServer()).get('/users/me').expect(401)

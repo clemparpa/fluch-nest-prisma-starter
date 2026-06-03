@@ -1,5 +1,5 @@
 import request from 'supertest'
-import { afterAll, beforeAll, describe, it } from 'vitest'
+import { beforeAll, describe, it } from 'vitest'
 import { getHttpServer } from './helpers/app'
 import {
   addOrgMember,
@@ -9,19 +9,10 @@ import {
   signUp,
   unsetActiveOrg,
 } from './helpers/auth'
-import { resetTestOrgs, resetTestUsers } from './helpers/db'
+import { resetDb } from './helpers/db'
 
 describe('RBAC e2e', () => {
-  // Order matters: delete users first (cascades members/invitations),
-  // then orgs (RESTRICT on Member.organization needs an empty org).
-  beforeAll(async () => {
-    await resetTestUsers()
-    await resetTestOrgs()
-  })
-  afterAll(async () => {
-    await resetTestUsers()
-    await resetTestOrgs()
-  })
+  beforeAll(resetDb)
 
   it('#1 system admin → @Roles([admin]) → 200', async () => {
     const cookie = await getAdminCookie()

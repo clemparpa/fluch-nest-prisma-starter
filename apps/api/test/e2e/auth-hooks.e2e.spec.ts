@@ -1,21 +1,13 @@
 import { Logger } from '@nestjs/common'
 import request from 'supertest'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { UnsafePrismaService } from '@/prisma/unsafe-prisma.service'
 import { getApp, getHttpServer } from './helpers/app'
 import { makeTestEmail, signUp } from './helpers/auth'
-import { resetTestOrgs, resetTestUsers } from './helpers/db'
+import { resetDb } from './helpers/db'
 
 describe('Auth hooks e2e (S8.7 — user.created → default org)', () => {
-  beforeAll(async () => {
-    await resetTestUsers()
-    await resetTestOrgs()
-  })
-
-  afterAll(async () => {
-    await resetTestUsers()
-    await resetTestOrgs()
-  })
+  beforeAll(resetDb)
 
   it('#1 Signup creates a default org and adds the user as owner', async () => {
     const { userId, cookie } = await signUp(makeTestEmail('hook'), 'hooks12345678', 'Alice Hook')

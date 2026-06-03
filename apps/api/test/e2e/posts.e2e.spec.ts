@@ -1,5 +1,5 @@
 import request from 'supertest'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { PostsService } from '@/posts/posts.service'
 import { UnsafePrismaService } from '@/prisma/unsafe-prisma.service'
 import { getApp, getHttpServer } from './helpers/app'
@@ -10,7 +10,7 @@ import {
   signUp,
   unsetActiveOrg,
 } from './helpers/auth'
-import { resetPosts, resetTestOrgs, resetTestUsers } from './helpers/db'
+import { resetDb } from './helpers/db'
 
 async function setActive(cookie: string, organizationId: string): Promise<string> {
   const res = await request(getHttpServer())
@@ -24,17 +24,7 @@ async function setActive(cookie: string, organizationId: string): Promise<string
 }
 
 describe('Posts e2e (S8.8)', () => {
-  beforeAll(async () => {
-    await resetPosts()
-    await resetTestUsers()
-    await resetTestOrgs()
-  })
-
-  afterAll(async () => {
-    await resetPosts()
-    await resetTestUsers()
-    await resetTestOrgs()
-  })
+  beforeAll(resetDb)
 
   it('#1 Member creates a post → 201, DB row carries authorId + organizationId', async () => {
     const alice = await signUp(makeTestEmail('post-alice'), 'posts123456789012', 'Alice')
