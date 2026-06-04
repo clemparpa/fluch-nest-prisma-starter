@@ -92,5 +92,6 @@ export const postsContract = c.router(
   },
   {
     strictStatusCodes: true,
+    pathPrefix: '/v1',
   },
 )

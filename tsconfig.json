@@ -1,18 +1,4 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "commonjs",
-    "lib": ["ES2022"],
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true,
-    "noImplicitOverride": true,
-    "esModuleInterop": true,
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
-    "skipLibCheck": true,
-    "resolveJsonModule": true,
-    "types": ["node"],
-    "ignoreDeprecations": "5.0"
-  }
+  "extends": "./packages/tsconfig/base.json",
+  "files": []
 }

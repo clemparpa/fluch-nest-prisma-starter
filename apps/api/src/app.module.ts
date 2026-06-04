@@ -38,8 +38,8 @@ import { UsersModule } from './users/users.module'
           FRONTEND_URL: config.get('FRONTEND_URL', { infer: true }),
         }),
         bodyParser: {
-          json: { limit: '2mb' },
-          urlencoded: { limit: '2mb', extended: true },
+          json: { limit: '1mb' },
+          urlencoded: { limit: '1mb', extended: true },
           rawBody: true,
         },
       }),
