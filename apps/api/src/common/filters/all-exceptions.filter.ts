@@ -134,6 +134,25 @@ export class AllExceptionsFilter implements ExceptionFilter {
       return this.internalError(exception)
     }
 
+    // Express-thrown errors (body-parser PayloadTooLargeError, raw-body
+    // BadRequest, etc.) expose a numeric `status` and a human message. Honour
+    // them instead of masking as 500.
+    if (
+      exception instanceof Error &&
+      'status' in exception &&
+      typeof (exception as { status: unknown }).status === 'number'
+    ) {
+      const status = (exception as { status: number }).status
+      if (status >= 400 && status < 600) {
+        return {
+          statusCode: status,
+          message: exception.message,
+          error: this.statusText(status),
+          errorName: exception.name,
+        }
+      }
+    }
+
     return this.internalError(exception)
   }
 
@@ -166,6 +185,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
         return 'Request Timeout'
       case 409:
         return 'Conflict'
+      case 413:
+        return 'Payload Too Large'
       case 422:
         return 'Unprocessable Entity'
       case 429:

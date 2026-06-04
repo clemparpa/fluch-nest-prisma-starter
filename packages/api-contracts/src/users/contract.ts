@@ -68,5 +68,6 @@ export const usersContract = c.router(
   },
   {
     strictStatusCodes: true,
+    pathPrefix: '/v1',
   },
 )

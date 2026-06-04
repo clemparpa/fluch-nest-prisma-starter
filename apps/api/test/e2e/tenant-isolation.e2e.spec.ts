@@ -28,7 +28,7 @@ describe('Tenant isolation e2e', () => {
 
   it('#1 Alice creates a Post → DB row carries her organizationId', async () => {
     const res = await request(getHttpServer())
-      .post('/posts')
+      .post('/v1/posts')
       .set('Cookie', aliceCookie)
       .send({ title: 'Alice top secret', content: 'alice body' })
       .expect(201)
@@ -42,12 +42,12 @@ describe('Tenant isolation e2e', () => {
   })
 
   it("#2 Bob lists /posts → does not see Alice's post", async () => {
-    const res = await request(getHttpServer()).get('/posts').set('Cookie', bobCookie).expect(200)
+    const res = await request(getHttpServer()).get('/v1/posts').set('Cookie', bobCookie).expect(200)
     expect(res.body.items).toEqual([])
     expect(res.body.total).toBe(0)
 
     const aliceList = await request(getHttpServer())
-      .get('/posts')
+      .get('/v1/posts')
       .set('Cookie', aliceCookie)
       .expect(200)
     expect(aliceList.body.items).toHaveLength(1)
@@ -56,7 +56,7 @@ describe('Tenant isolation e2e', () => {
 
   it("#3 Bob PATCH on Alice's post → 404 (tenant filter blocks the match)", async () => {
     await request(getHttpServer())
-      .patch(`/posts/${aliceOnlyPostId}`)
+      .patch(`/v1/posts/${aliceOnlyPostId}`)
       .set('Cookie', bobCookie)
       .send({ title: 'hijacked' })
       .expect(404)
@@ -69,19 +69,19 @@ describe('Tenant isolation e2e', () => {
   it('#4 user without active org on /posts → 403 (MemberHasPermission rejects)', async () => {
     const { cookie: rawCookie } = await signUp(makeTestEmail('noorg-iso'), 'iso123456789012')
     const cookie = await unsetActiveOrg(rawCookie)
-    await request(getHttpServer()).get('/posts').set('Cookie', cookie).expect(403)
+    await request(getHttpServer()).get('/v1/posts').set('Cookie', cookie).expect(403)
   })
 
   it('#5 ALS concurrency: 10 interleaved requests never leak tenant context', async () => {
     await request(getHttpServer())
-      .post('/posts')
+      .post('/v1/posts')
       .set('Cookie', bobCookie)
       .send({ title: 'Bob only', content: 'bob body' })
       .expect(201)
 
     const calls = Array.from({ length: 10 }, (_, i) =>
       request(getHttpServer())
-        .get('/posts')
+        .get('/v1/posts')
         .set('Cookie', i % 2 === 0 ? aliceCookie : bobCookie),
     )
     const results = await Promise.all(calls)
