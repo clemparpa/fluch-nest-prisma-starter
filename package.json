@@ -31,11 +31,8 @@
     "prepare": "node scripts/prepare.mjs"
   },
   "lint-staged": {
-    "*.{ts,js,mjs,json,jsonc}": [
+    "*.{ts,tsx,js,jsx,mjs,json,jsonc,css}": [
       "biome check --write --no-errors-on-unmatched"
-    ],
-    "apps/web/**/*.{ts,tsx,js,jsx,json,css}": [
-      "pnpm --filter @fluch/web exec biome check --write --no-errors-on-unmatched"
     ],
     "apps/api/prisma/schema.prisma": [
       "pnpm --filter @fluch/api exec prisma format"
