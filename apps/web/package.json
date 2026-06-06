@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
+    "@fluch/api-contracts": "workspace:*",
     "@fluch/signal-store": "^1.1.1",
     "@fontsource-variable/geist": "^5.2.8",
     "@preact/signals-core": "^1.14.2",
