@@ -16,6 +16,10 @@ allowBuilds:
   better-sqlite3: false
   cpu-features: true
   esbuild: true
+  # msw a un postinstall qui copie un service-worker fictif — uniquement
+  # utile si on utilise msw pour mocker des routes en test. Pas notre cas
+  # (msw est transitif via shadcn CLI). Ignoré.
+  msw: false
   prisma: true
   prisma-zod-generator: false
   protobufjs: true

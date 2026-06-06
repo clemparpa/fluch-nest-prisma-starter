@@ -38,3 +38,11 @@ lerna-debug.log*
 
 apps/*/src/generated/prisma
 packages/*/src/generated/zod
+
+# Frontend (Vite)
+**/*.tsbuildinfo
+**/.vite/
+**/dist-ssr/
+*.local
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
