@@ -2,6 +2,11 @@ packages:
   - 'apps/*'
   - 'packages/*'
 
+# Hard-link les workspace deps (ex: @fluch/api-contracts dans apps/api/node_modules)
+# au lieu de symlinker. Requis par `pnpm deploy` (pipeline image Docker prod minimale).
+# Trade-off dev : modif dans `packages/*` → rebuild ce package + `pnpm install` pour propager.
+injectWorkspacePackages: true
+
 allowBuilds:
   '@nestjs/core': true
   '@prisma/client': true
