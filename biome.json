@@ -20,6 +20,7 @@
       "!apps/*/coverage",
       "!apps/*/src/generated",
       "!apps/*/prisma/migrations",
+      "!apps/web",
       "!packages/*/dist",
       "!packages/*/node_modules",
       "!packages/*/src/generated"

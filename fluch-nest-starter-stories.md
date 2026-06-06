@@ -866,6 +866,289 @@ Les stories S07, S08, S8.1 ont chacune été validées par ~10 commandes `curl` 
 
 ---
 
+## S19.1 — Import du template React + workspace pnpm
+
+**Taille** : M
+**Dépendances** : S8.3 (monorepo), S16 (root hooks)
+**Goal** : intégrer `fluch-react-signals-starter` comme `apps/web/` dans le workspace pnpm, sans dupliquer le tooling déjà présent au root.
+
+**Tâches**
+- Cloner [clemparpa/fluch-react-signals-starter](https://github.com/clemparpa/fluch-react-signals-starter) puis copier le contenu dans `apps/web/` (sans le `.git`)
+- Adapter `apps/web/package.json` :
+  - `"name": "@fluch/web"`, `"private": true`
+  - **Retirer** `"packageManager"` (géré au root, pnpm 11)
+  - **Retirer** `"engines"` (géré au root)
+  - **Retirer** le script `"prepare"` et le fichier `scripts/prepare.js` (Husky vit au root)
+  - **Retirer** `husky` et `lint-staged` des `devDependencies`
+- Aligner versions partagées au root (sinon pnpm met 2 copies dans `node_modules`) :
+  - `typescript` (post-merge PR #17 → 6.x)
+  - `@biomejs/biome` (version unique pour toutes les apps)
+  - `@types/node` (idem)
+- **Supprimer** les fichiers du template qui doublent ceux du root :
+  - `apps/web/.github/` (workflows, ISSUE_TEMPLATE, dependabot — tout déjà au root)
+  - `apps/web/CONTRIBUTING.md`, `apps/web/LICENSE`, `apps/web/SECURITY.md`, `apps/web/CODE_OF_CONDUCT.md`
+  - `apps/web/.editorconfig`, `apps/web/.nvmrc` (root gère)
+  - `apps/web/.husky/`
+  - Fusionner `apps/web/.gitignore` dans le root `.gitignore` puis supprimer
+- Vérifier `pnpm-workspace.yaml` matche bien `apps/*` (probable, sinon ajouter)
+- Scripts root `package.json` (ajouter) :
+  - `"dev:web": "pnpm --filter @fluch/web dev"`
+  - `"dev:api": "pnpm --filter @fluch/api dev"`
+  - `"dev": "pnpm -r --parallel run dev"` (les 2 en parallèle, Ctrl-C les tue ensemble)
+  - `"build": "pnpm -r run build"`
+  - Vérifier que `typecheck`, `test`, `lint` au root descendent dans **les deux** apps (`-r` ou filter combiné)
+
+**DoD**
+- `pnpm install` au root : 0 warning peer deps, 0 duplicate de `typescript`/`react`/`@types/node` dans `pnpm why`
+- `pnpm dev:web` → Vite sur :5173, page `/showcase` rend
+- `pnpm dev:api` → Nest boot inchangé
+- `pnpm dev` lance les 2 en parallèle (output entrelacé prefixé)
+- `pnpm typecheck` au root : passe pour api + web
+- `pnpm test` au root : run vitest api + vitest web (les 2 verts)
+- `pnpm lint` au root : passe sur apps/web/src/** aussi
+
+**Note** : ne **pas** rapatrier le `.changeset/` du template — le monorepo n'a pas (encore) de release pipeline. Reporté à plus tard si besoin.
+
+---
+
+## S19.2 — Unification Husky + lint-staged pour les 2 apps
+
+**Taille** : S
+**Dépendances** : S19.1
+**Goal** : les hooks root (S02 + S16) couvrent désormais `apps/web/` au même titre qu'`apps/api/`. Pas de hooks dupliqués par app.
+
+**Tâches**
+- Ajuster `lint-staged` racine pour inclure les patterns web :
+  - `"apps/web/**/*.{ts,tsx,js,jsx,json,css}": "biome check --write --no-errors-on-unmatched"`
+  - Vérifier que le pattern actuel pour `apps/api/**` reste isolé (sinon biome lint des fichiers `.css`/`.tsx` côté api, no-op)
+- `.husky/pre-commit` : déjà `lint-staged` + `pnpm typecheck`. Vérifier que `typecheck` racine couvre web (cf. S19.1) — sinon corriger.
+- `.husky/pre-push` : déjà `pnpm typecheck && pnpm test`. Idem.
+- Vérifier `biome.json` racine couvre `apps/web/src/**` (probable mais le template avait son propre `biome.json` — décider : suppression et tout au root, ou `biome.json` web qui extends le root).
+  - **Recommandation** : un seul `biome.json` au root, qui couvre les 2 apps. Adopter les overrides du template (notamment pour les `.tsx` et le formatter Tailwind v4) au root.
+- Documenter dans `CONTRIBUTING.md` (mise à jour) : un seul jeu de hooks pour tout le monorepo
+
+**DoD**
+- Modifier un `.tsx` mal formaté dans `apps/web/` puis `git commit` → biome auto-fix appliqué
+- TS error injecté dans `apps/web/src/main.tsx` → pre-commit rejette
+- Test cassé dans `apps/web/src/test/` → pre-push rejette après typecheck OK
+- Aucun hook dans `apps/web/.husky/` (tout au root)
+- `biome.json` unique au root, pas de duplicate dans `apps/web/`
+
+---
+
+## S19.3 — Client TS-Rest signals-based dans `packages/api-contracts`
+
+**Taille** : M
+**Dépendances** : S19.1, S8.4 (api-contracts existant)
+**Goal** : exposer un client TS-Rest typé + un helper `asSignalRequest` qui retourne des signals (data/loading/error), sans introduire TanStack Query — cohérent avec l'ADN du template.
+
+**Tâches**
+- `packages/api-contracts/package.json` : ajouter `@ts-rest/core` en dep si pas déjà
+- Créer `packages/api-contracts/src/client/index.ts` :
+  - Export `createApiClient(baseUrl: string, opts?)` → `initClient(contract, { baseUrl, baseHeaders: {}, credentials: 'include', ...opts })`
+  - `credentials: 'include'` par défaut pour que les cookies better-auth voyagent (S19.4)
+- Créer `packages/api-contracts/src/client/signal-request.ts` :
+  - `asSignalRequest<TArgs, TData>(call: (args: TArgs) => Promise<TsRestResponse>)` → factory qui retourne un **signalStore feature** (cf. `@fluch/signal-store`) :
+    - State : `{ data: TData | null, loading: boolean, error: Error | null }`
+    - Methods : `execute(args)`, `reset()`
+  - Composable avec `withState` + `withMethods` du template
+- Côté web : créer `apps/web/src/lib/api.ts` :
+  - Importe `createApiClient` + le `contract` depuis `@fluch/api-contracts`
+  - Instancie `export const api = createApiClient(import.meta.env.VITE_API_BASE_URL ?? '/api')`
+- Créer une page demo `apps/web/src/pages/users.tsx` qui :
+  - Utilise `asSignalRequest(api.users.list)`
+  - Affiche la liste users dans une `<Table>` shadcn (composant déjà vendored)
+  - Bouton "Refresh" → `execute()`
+- Ajouter la route `/users` dans `apps/web/src/router.tsx`
+
+**DoD**
+- Changer un type dans `packages/api-contracts/src/users.ts` (e.g. renommer un champ du response) → `pnpm typecheck` casse côté `apps/web/src/pages/users.tsx` (preuve du contrat type-safe end-to-end)
+- En dev (avec api + web up), naviguer sur `/users` → liste rendue, network tab montre `GET /api/v1/users`
+- `loading` signal flip pendant le fetch (visible via un `<Skeleton>`)
+- Vitest : un test unitaire de `asSignalRequest` (mock fetch, vérifie les transitions state)
+- **Pas** de `@tanstack/react-query` ajouté
+
+**Note** : `asSignalRequest` est volontairement minimal (pas de cache, pas de retry, pas de stale-while-revalidate). C'est un wrapper one-shot. Si besoin de cache : utiliser `signal-store` pour gérer un state plus large côté app, ou réintroduire TanStack Query plus tard.
+
+---
+
+## S19.4 — Câblage better-auth via Vite proxy `/api`
+
+**Taille** : M
+**Dépendances** : S19.1, S07 (better-auth back), S8.5 (plugins)
+**Goal** : front et back same-origin en dev grâce au proxy Vite, cookies de session marchent sans CORS, le client better-auth du template (`src/lib/auth-client.ts`) ne touche que des URLs relatives.
+
+**Tâches**
+- `apps/web/vite.config.ts` : ajouter proxy
+  ```ts
+  server: {
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: false, // same host
+        // pas de rewrite : /api/auth/sign-in → /api/auth/sign-in côté API
+      },
+    },
+  },
+  ```
+- Côté Nest : vérifier le préfixe global. Si `app.setGlobalPrefix('v1')` est seul (S10), les routes better-auth tombent sous `/v1/auth/...` — il faut **soit** monter better-auth en dehors du prefix (`exclude` sur `setGlobalPrefix`) **soit** ajuster le proxy pour rewriter. Recommandation : monter better-auth sur `/api/auth/*` explicitement (préfixe `/api` accepté par le proxy front, le `/v1` reste pour le reste de l'API).
+  - Décision concrète : le proxy front cible `/api/*`. Côté Nest :
+    - better-auth handler monté sur `/api/auth/*` (cf. `@thallesp/nestjs-better-auth` config)
+    - Le reste de l'API : prefix `/api/v1/*` (changer `setGlobalPrefix('v1')` → `setGlobalPrefix('api/v1')`)
+  - Mettre à jour tous les tests e2e API qui hit `/v1/...` → `/api/v1/...`
+- `apps/web/src/lib/auth-client.ts` : `baseURL: '/api/auth'` (relatif, le proxy gère)
+- `apps/web/.env.example` :
+  - Retirer `VITE_AUTH_BASE_URL` (devient relatif, pas besoin)
+  - Ajouter commentaire expliquant le proxy
+- Vérifier `apps/web/src/pages/auth.tsx` (page demo du template) : la bannière rouge "No auth backend" disparaît quand l'API est up
+
+**DoD**
+- Dev : `pnpm dev` (api + web) → sur http://localhost:5173/auth, sign-up avec un email test → user créé en DB (vérif `pnpm db:studio` ou logs Nest)
+- `useSession()` côté web retourne `{ data: { user, session }, isPending: false }` après sign-in
+- Sign-out → session vide, cookies effacés
+- 0 erreur CORS dans la console (DevTools Network)
+- Tests e2e API toujours verts après le changement de prefix (`/api/v1/`)
+- README web : note "en dev, l'auth marche grâce au proxy Vite — pas besoin de configurer CORS côté API"
+
+**Note** : en prod (S19.6), le front est servi par l'API elle-même → same-origin natif, pas de proxy nécessaire, les chemins relatifs `/api/...` marchent directement.
+
+---
+
+## S19.5 — CI dédiée `ci-web.yml`
+
+**Taille** : S
+**Dépendances** : S19.1, S15 (modèle ci-api.yml)
+**Goal** : workflow séparé pour le front, déclenché uniquement quand `apps/web/` ou les contrats partagés bougent. Pas de matrice — plus lisible séparé.
+
+**Tâches**
+- Créer `.github/workflows/ci-web.yml`, structure calquée sur `ci-api.yml` :
+  ```yaml
+  name: ci-web
+  on:
+    push:
+      branches: [main]
+      paths:
+        - 'apps/web/**'
+        - 'packages/api-contracts/**'
+        - 'pnpm-lock.yaml'
+        - 'package.json'
+        - 'biome.json'
+        - 'tsconfig.base.json'
+        - '.github/workflows/ci-web.yml'
+    pull_request:
+      paths: [idem]
+  concurrency:
+    group: ci-web-${{ github.ref }}
+    cancel-in-progress: true
+  jobs:
+    check: # biome ci sur apps/web
+    typecheck: # pnpm --filter @fluch/web typecheck
+    test: # vitest run dans apps/web
+    build: # pnpm --filter @fluch/web build
+  ```
+- Pas de job `audit` (déjà couvert root-level par `audit-deps.yml`)
+- Cache pnpm + node_modules identique à ci-api.yml
+- Ajouter `apps/web/**` dans les `paths:` d'audit-deps.yml si pas déjà couvert par `**`
+
+**DoD**
+- PR qui touche uniquement `apps/web/src/App.tsx` → déclenche `ci-web` mais **pas** `ci-api`
+- PR qui touche uniquement `apps/api/src/users/` → déclenche `ci-api` mais **pas** `ci-web`
+- PR qui touche `packages/api-contracts/` → déclenche **les deux** (contrat partagé)
+- 4 jobs verts sur une PR de référence
+- Concurrency : push successif annule la run précédente
+
+**Note** : à ajouter ensuite dans la branch protection (Settings > Branches > main) : `ci-web / check`, `ci-web / typecheck`, `ci-web / test`, `ci-web / build` comme required checks **conditionnels** (GitHub les marque "expected" mais skippe si paths ne match pas — comportement standard).
+
+---
+
+## S19.6 — Docker prod : Nest sert le `dist/` du front (multi-stage)
+
+**Taille** : M
+**Dépendances** : S19.1, S13 (Dockerfile API)
+**Goal** : un seul container prod qui sert l'API ET le front statique. Le plus simple pour fork ce template, quitte à splitter plus tard si scale.
+
+**Tâches**
+- Adapter `apps/api/docker/Dockerfile` (S13) → ajouter un stage `web-build` :
+  ```dockerfile
+  FROM node:22-alpine AS web-build
+  WORKDIR /app
+  COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+  COPY apps/web/package.json apps/web/
+  COPY packages/api-contracts/package.json packages/api-contracts/
+  RUN corepack enable && pnpm install --frozen-lockfile --filter @fluch/web...
+  COPY apps/web ./apps/web
+  COPY packages/api-contracts ./packages/api-contracts
+  COPY tsconfig.base.json biome.json ./
+  RUN pnpm --filter @fluch/web build
+  # produit apps/web/dist
+  ```
+- Stage `runtime` (distroless) : `COPY --from=web-build /app/apps/web/dist ./public`
+- Côté Nest, installer `@nestjs/serve-static` :
+  - Dans `app.module.ts`, conditionnel `NODE_ENV === 'production'` :
+    ```ts
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'public'),
+      exclude: ['/api/*'], // ne pas servir le front sur les routes API
+    })
+    ```
+  - SPA fallback : `ServeStaticModule` gère le `index.html` fallback pour les routes React Router
+- Vérifier que les routes API (`/api/auth/*`, `/api/v1/*`) restent prioritaires (exclude joue)
+- Bench taille image : prendre la mesure avant/après (cible : ≤ 380 MB, vs 337 MB en S13 baseline)
+- Update `apps/api/docker/.dockerignore` pour inclure `apps/web/node_modules`, `apps/web/dist` (régénérés)
+
+**DoD**
+- `docker build -t fluch-fullstack -f apps/api/docker/Dockerfile .` réussit, image ≤ 400 MB
+- `docker run -p 3000:3000 --env-file .env.docker fluch-fullstack` :
+  - http://localhost:3000/ → page React (`/showcase` du template)
+  - http://localhost:3000/auth → page auth du template (forms shadcn)
+  - http://localhost:3000/api/v1/health → JSON `{ status: 'ok' }`
+  - Sign-up via l'UI fonctionne (cookies same-origin)
+  - http://localhost:3000/users → page demo avec liste users (S19.3)
+- Image distroless + non-root user (hérité S13)
+- Cold start ≤ 2 s
+
+**Note** : en prod, plus de proxy Vite — tout est same-origin. Le client TS-Rest pointe sur `/api/v1`, le client better-auth sur `/api/auth`, et les routes React Router cohabitent sur `/` grâce au SPA fallback.
+
+---
+
+## S19.7 — Smoke test cross-stack (fusion avec S18)
+
+**Taille** : M
+**Dépendances** : S19.6 + toutes les précédentes
+**Goal** : un test bout-en-bout qui valide la pile full-stack : container prod up → sign-up via UI → posts créés/listés. Absorbe et remplace S18.
+
+**Tâches**
+- Choisir l'outil : **Playwright** (recommandé : `@playwright/test`, headless par défaut, supporte cookies natif)
+- Créer `apps/web/test/e2e/` :
+  - `smoke.spec.ts` :
+    1. Build l'image Docker fullstack (S19.6) via `docker compose -f compose.smoke.yml up -d`
+    2. Attendre `/api/v1/health` 200
+    3. Goto `http://localhost:3000/auth`
+    4. Sign-up (email, password)
+    5. Vérifier redirect `/` + `useSession` populated (data-testid sur la nav)
+    6. Goto `/users` → liste contient le user créé
+    7. Sign-out → retour `/auth`
+- `compose.smoke.yml` à la racine : api (built local) + postgres (postgres:18-alpine)
+- Script root : `"smoke": "playwright test apps/web/test/e2e/"`
+- Job CI `smoke.yml` (workflow séparé) : trigger sur push main + manuel
+  - Build l'image, run docker compose, run playwright, teardown
+  - Pas dans la CI PR (trop lourd, ~3-5 min)
+- Étendre la grille S18 (30 critères de la spec §9) en y ajoutant les critères front :
+  - Page `/auth` rend les forms shadcn
+  - Sign-up via UI crée bien un user + l'org par défaut (S8.7)
+  - Cookies session persistent à un reload
+  - Le client TS-Rest type-check à la build (changer un champ contract → `pnpm build` casse)
+  - Bundle web ≤ 500 KB gzipped (vérif via `vite build --reporter`)
+
+**DoD**
+- `pnpm smoke` localement (Docker requis) : test vert en ≤ 60 s
+- Job CI `smoke` vert sur main après merge
+- Les 30 critères de la spec §9 + les 5 critères front = OK
+- Tag `v0.1.0` créé sur main (déplacé depuis S18)
+
+---
+
 ## Ordre d'exécution recommandé
 
 **Phase 1 — Fondations (FAIT)**
@@ -880,17 +1163,20 @@ S06
 **Phase 4 — Domaine v1 + Pivots qualité (FAIT)**
 S07 → S08 → S8.1 → S8.2
 
-**Phase 5 — Pivot architectural (~3-4 jours)**
+**Phase 5 — Pivot architectural (FAIT)**
 S8.3 (monorepo) → S8.4 (packages + Users en TS-Rest) → S8.5 (better-auth plugins) → S8.6 (tenant infra) → S8.7 (events Nest) → S8.8 (Post exemple)
 
-**Phase 6 — Reprise plan original (adapté)**
+**Phase 6 — Reprise plan original (FAIT)**
 S09 (Health) → S10 (Bootstrap final, Swagger via TS-Rest) → S8.11 (Testcontainers light)
 
-**Phase 7 — Packaging (parallélisable)**
+**Phase 7 — Packaging (FAIT)**
 S13 ‖ S15 ‖ S16
 
-**Phase 8 — Finition**
-S17 (README enrichi) → S18 (smoke tests étendus)
+**Phase 8 — Frontend integration (en cours)**
+S19.1 (import apps/web) → S19.2 (tooling unifié) → S19.3 (client TS-Rest signals) → S19.4 (better-auth proxy) → S19.5 (ci-web) → S19.6 (Docker fullstack)
+
+**Phase 9 — Finition**
+S17 (README enrichi) → S19.7 (smoke cross-stack, remplace S18)
 
 **Supprimées** : S11 (devenue S8.11 rabotée), S12 (absorbée par S8.2 + tests modules), S14 (livrée en S05a)
 

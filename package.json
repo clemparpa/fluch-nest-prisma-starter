@@ -9,10 +9,12 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "pnpm --filter @fluch/api build",
+    "build": "pnpm -r build",
     "start": "pnpm --filter @fluch/api start",
-    "dev": "pnpm --filter @fluch/api dev",
-    "test": "pnpm --filter @fluch/api test",
+    "dev": "pnpm -r --parallel run dev",
+    "dev:api": "pnpm --filter @fluch/api dev",
+    "dev:web": "pnpm --filter @fluch/web dev",
+    "test": "pnpm -r test",
     "test:watch": "pnpm --filter @fluch/api test:watch",
     "test:cov": "pnpm --filter @fluch/api test:cov",
     "typecheck": "pnpm -r typecheck",
@@ -31,6 +33,9 @@
   "lint-staged": {
     "*.{ts,js,mjs,json,jsonc}": [
       "biome check --write --no-errors-on-unmatched"
+    ],
+    "apps/web/**/*.{ts,tsx,js,jsx,json,css}": [
+      "pnpm --filter @fluch/web exec biome check --write --no-errors-on-unmatched"
     ],
     "apps/api/prisma/schema.prisma": [
       "pnpm --filter @fluch/api exec prisma format"
