@@ -1,0 +1,78 @@
+name: CI API
+
+on:
+  push:
+    branches: [main]
+    paths: &api-paths
+      - "apps/api/**"
+      - "packages/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".pnpmfile.cjs"
+      - "package.json"
+      - ".github/workflows/ci-api.yml"
+  pull_request:
+    paths: *api-paths
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.0.8
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @fluch/api-contracts build
+      - run: pnpm -r typecheck
+      - run: pnpm check
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.0.8
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @fluch/api-contracts build
+      - run: pnpm --filter @fluch/api test
+        env:
+          NODE_ENV: test
+          # Dummy values for CI — tests don't validate sessions against prod.
+          # BETTER_AUTH_SECRET must be >= 32 chars (cf. envSchema).
+          BETTER_AUTH_SECRET: ci-test-secret-not-used-in-production-padding
+          BETTER_AUTH_URL: http://localhost:3000
+          FRONTEND_URL: http://localhost:5173
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [check, test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.0.8
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r build
+      - name: Docker build (target=runtime)
+        run: docker build -f apps/api/docker/Dockerfile -t fluch-api:${{ github.sha }} .
