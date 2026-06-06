@@ -50,15 +50,17 @@ docs(readme): document SENTRY_DSN setup
 
 ## Hooks Husky
 
-Trois hooks tournent automatiquement :
+Trois hooks tournent automatiquement et couvrent **les deux apps** (`apps/api` + `apps/web`) — un seul jeu de hooks racine, pas de duplication par sous-package :
 
 | Hook         | Action                                          | Quand                  |
 |--------------|-------------------------------------------------|------------------------|
-| `pre-commit` | `lint-staged` (Biome) + `pnpm typecheck`        | `git commit`           |
+| `pre-commit` | `lint-staged` (Biome) + `pnpm -r typecheck`     | `git commit`           |
 | `commit-msg` | `commitlint --edit $1`                          | `git commit`           |
-| `pre-push`   | `pnpm typecheck && pnpm test` (Testcontainers)  | `git push`             |
+| `pre-push`   | `pnpm -r typecheck && pnpm -r test`             | `git push`             |
 
-Le `pre-push` lance les tests e2e — comptez 30-60s par push. Daemon Docker requis (Testcontainers démarre Postgres).
+`lint-staged` applique `biome check --write` au pattern `*.{ts,tsx,js,jsx,mjs,json,jsonc,css}` — la config unique `biome.json` racine porte des overrides spécifiques pour `apps/web/**` (quote style double, Tailwind CSS) et pour `apps/web/src/components/ui/**` (règles a11y désactivées sur les composants shadcn vendored).
+
+Le `pre-push` lance les tests des deux apps : vitest unit côté web (~2 s) puis e2e Nest avec Testcontainers Postgres côté api (~30-60 s). Daemon Docker requis.
 
 **Bypass en dernier recours** (hotfix uniquement) :
 
