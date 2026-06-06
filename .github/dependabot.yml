@@ -1,0 +1,49 @@
+# Monorepo pnpm : 1 seul pnpm-lock.yaml à la racine → 1 seul bloc npm.
+# Si ce template est ré-utilisé dans une app standalone (sans pnpm-workspace),
+# `directory: "/"` reste correct.
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      nestjs:
+        patterns:
+          - "@nestjs/*"
+      prisma:
+        patterns:
+          - "@prisma/*"
+          - "prisma"
+      testing:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+          - "@testcontainers/*"
+          - "supertest"
+      types:
+        patterns:
+          - "@types/*"
+        dependency-type: development
+      biome:
+        patterns:
+          - "@biomejs/*"
+      better-auth:
+        patterns:
+          - "better-auth"
+          - "@thallesp/nestjs-better-auth"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+
+  - package-ecosystem: docker
+    directory: "/apps/api/docker"
+    schedule:
+      interval: weekly
+      day: monday
