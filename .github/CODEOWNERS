@@ -1,0 +1,9 @@
+# Tous les fichiers : @clemparpa (solo owner pour l'instant)
+* @clemparpa
+
+# Zones particulièrement sensibles — gardées explicites au cas où d'autres
+# contributeurs seraient ajoutés en `*` plus tard.
+/apps/api/prisma/ @clemparpa
+/apps/api/src/auth/ @clemparpa
+/apps/api/src/prisma/ @clemparpa
+/.github/ @clemparpa
