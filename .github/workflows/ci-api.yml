@@ -54,6 +54,11 @@ jobs:
       - run: pnpm --filter @fluch/api test
         env:
           NODE_ENV: test
+          # Dummy values for CI — tests don't validate sessions against prod.
+          # BETTER_AUTH_SECRET must be >= 32 chars (cf. envSchema).
+          BETTER_AUTH_SECRET: ci-test-secret-not-used-in-production-padding
+          BETTER_AUTH_URL: http://localhost:3000
+          FRONTEND_URL: http://localhost:5173
 
   build:
     runs-on: ubuntu-latest
