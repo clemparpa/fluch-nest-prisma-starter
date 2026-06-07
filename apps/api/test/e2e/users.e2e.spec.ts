@@ -14,7 +14,7 @@ describe('Users e2e (S8.1 DoD)', () => {
     await resetDb()
     adminCookie = await getAdminCookie()
     const adminRes = await request(getHttpServer())
-      .get('/v1/users/me')
+      .get('/api/v1/users/me')
       .set('Cookie', adminCookie)
       .expect(200)
     adminUserId = adminRes.body.id
@@ -24,12 +24,12 @@ describe('Users e2e (S8.1 DoD)', () => {
   })
 
   it('#1 GET /users/me sans cookie → 401', async () => {
-    await request(getHttpServer()).get('/v1/users/me').expect(401)
+    await request(getHttpServer()).get('/api/v1/users/me').expect(401)
   })
 
   it('#2 GET /users/me admin → 200 + shape User complet (sans password/accounts/sessions)', async () => {
     const res = await request(getHttpServer())
-      .get('/v1/users/me')
+      .get('/api/v1/users/me')
       .set('Cookie', adminCookie)
       .expect(200)
 
@@ -61,14 +61,14 @@ describe('Users e2e (S8.1 DoD)', () => {
 
   it('#3 GET /users/:adminId par lambda → 403', async () => {
     await request(getHttpServer())
-      .get(`/v1/users/${adminUserId}`)
+      .get(`/api/v1/users/${adminUserId}`)
       .set('Cookie', lambdaCookie)
       .expect(403)
   })
 
   it('#4 GET /users/:lambdaId par admin → 200', async () => {
     const res = await request(getHttpServer())
-      .get(`/v1/users/${lambdaUserId}`)
+      .get(`/api/v1/users/${lambdaUserId}`)
       .set('Cookie', adminCookie)
       .expect(200)
     expect(res.body.id).toBe(lambdaUserId)
@@ -76,7 +76,7 @@ describe('Users e2e (S8.1 DoD)', () => {
 
   it('#5 PATCH /users/me {name:"Nouveau"} → 200 + name updated', async () => {
     const res = await request(getHttpServer())
-      .patch('/v1/users/me')
+      .patch('/api/v1/users/me')
       .set('Cookie', adminCookie)
       .send({ name: 'Nouveau' })
       .expect(200)
@@ -84,7 +84,7 @@ describe('Users e2e (S8.1 DoD)', () => {
 
     // Revert pour ne pas polluer le seed entre runs
     await request(getHttpServer())
-      .patch('/v1/users/me')
+      .patch('/api/v1/users/me')
       .set('Cookie', adminCookie)
       .send({ name: 'Admin Dev' })
       .expect(200)
@@ -92,7 +92,7 @@ describe('Users e2e (S8.1 DoD)', () => {
 
   it('#6 PATCH /users/me {} (empty body) → 200', async () => {
     await request(getHttpServer())
-      .patch('/v1/users/me')
+      .patch('/api/v1/users/me')
       .set('Cookie', adminCookie)
       .send({})
       .expect(200)
@@ -100,7 +100,7 @@ describe('Users e2e (S8.1 DoD)', () => {
 
   it('#7 PATCH /users/me {email:"x@x.com"} → 400 + unrecognized_keys', async () => {
     const res = await request(getHttpServer())
-      .patch('/v1/users/me')
+      .patch('/api/v1/users/me')
       .set('Cookie', adminCookie)
       .send({ email: 'x@x.com' })
       .expect(400)
@@ -109,12 +109,12 @@ describe('Users e2e (S8.1 DoD)', () => {
   })
 
   it('#10 GET /users par lambda → 403', async () => {
-    await request(getHttpServer()).get('/v1/users').set('Cookie', lambdaCookie).expect(403)
+    await request(getHttpServer()).get('/api/v1/users').set('Cookie', lambdaCookie).expect(403)
   })
 
   it('#11 GET /users?page=1&limit=10 par admin → 200 + shape paginé + items filtrés', async () => {
     const res = await request(getHttpServer())
-      .get('/v1/users?page=1&limit=10')
+      .get('/api/v1/users?page=1&limit=10')
       .set('Cookie', adminCookie)
       .expect(200)
     expect(res.body).toMatchObject({
@@ -145,7 +145,7 @@ describe('Users e2e (S8.1 DoD)', () => {
 
   it('#12 GET /users?limit=200 → 400 + too_big', async () => {
     const res = await request(getHttpServer())
-      .get('/v1/users?limit=200')
+      .get('/api/v1/users?limit=200')
       .set('Cookie', adminCookie)
       .expect(400)
     expect(res.body.issues[0].code).toBe('too_big')
@@ -153,7 +153,7 @@ describe('Users e2e (S8.1 DoD)', () => {
 
   it('#13 GET /users?limit=abc → 400 + invalid_type (coercion zod)', async () => {
     const res = await request(getHttpServer())
-      .get('/v1/users?limit=abc')
+      .get('/api/v1/users?limit=abc')
       .set('Cookie', adminCookie)
       .expect(400)
     expect(res.body.issues[0].code).toBe('invalid_type')
@@ -161,7 +161,7 @@ describe('Users e2e (S8.1 DoD)', () => {
 
   it('#14 GET /users/non-existent-id par admin → 404', async () => {
     await request(getHttpServer())
-      .get('/v1/users/non-existent-id')
+      .get('/api/v1/users/non-existent-id')
       .set('Cookie', adminCookie)
       .expect(404)
   })
