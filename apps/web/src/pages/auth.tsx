@@ -1,6 +1,5 @@
 import { useSignal } from "@preact/signals-react"
 import { toast } from "sonner"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -13,30 +12,6 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { signIn, signOut, signUp, useSession } from "@/lib/auth-client"
-
-const baseURL = import.meta.env.VITE_AUTH_BASE_URL
-
-function BackendBanner() {
-  if (!baseURL) {
-    return (
-      <Alert variant="destructive">
-        <AlertTitle>No auth backend configured</AlertTitle>
-        <AlertDescription>
-          Set <code className="font-mono">VITE_AUTH_BASE_URL</code> in your{" "}
-          <code className="font-mono">.env</code> to point at a running better-auth server.
-        </AlertDescription>
-      </Alert>
-    )
-  }
-  return (
-    <Alert>
-      <AlertTitle>Auth backend</AlertTitle>
-      <AlertDescription>
-        <code className="font-mono">{baseURL}</code>
-      </AlertDescription>
-    </Alert>
-  )
-}
 
 function SignInCard() {
   const email = useSignal("")
@@ -240,11 +215,10 @@ function AuthPage() {
       <header className="flex flex-col gap-2">
         <h1 className="text-3xl font-semibold tracking-tight">Authentication</h1>
         <p className="text-muted-foreground">
-          better-auth client demo. The server is out of scope — point{" "}
-          <code className="font-mono">VITE_AUTH_BASE_URL</code> at a running backend.
+          better-auth client demo against the local API at{" "}
+          <code className="font-mono">/api/auth</code>.
         </p>
       </header>
-      <BackendBanner />
       <div className="grid gap-6 md:grid-cols-2">
         <SignInCard />
         <SignUpCard />

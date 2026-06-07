@@ -1,4 +1,5 @@
 import { allContracts } from '@fluch/api-contracts'
+import { RequestMethod } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
 import type { NestExpressApplication } from '@nestjs/platform-express'
 import { SwaggerModule } from '@nestjs/swagger'
@@ -26,6 +27,14 @@ async function bootstrap() {
   app.use(helmet())
   app.use(compression())
   app.use(cookieParser())
+
+  // All Nest routes live under /api. Health stays at root (LB-friendly,
+  // version-neutral). better-auth mounts /api/auth/* via raw express
+  // middleware before Nest's router, so setGlobalPrefix doesn't touch it.
+  app.setGlobalPrefix('api', {
+    exclude: [{ path: 'health', method: RequestMethod.GET }],
+  })
+
   app.enableCors({
     origin: process.env.CORS_ORIGIN?.split(',') ?? false,
     credentials: true,
@@ -37,6 +46,13 @@ async function bootstrap() {
   const openApiDoc = generateOpenApi(allContracts, {
     info: { title: 'fluch-api', version: '1.0' },
   })
+  // Mirror Nest's setGlobalPrefix: prefix every path with /api except /health.
+  openApiDoc.paths = Object.fromEntries(
+    Object.entries(openApiDoc.paths ?? {}).map(([path, pathItem]) => [
+      path === '/health' ? path : `/api${path}`,
+      pathItem,
+    ]),
+  )
   if (process.env.NODE_ENV !== 'production') {
     SwaggerModule.setup('docs', app, openApiDoc as never)
   }

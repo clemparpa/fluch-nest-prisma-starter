@@ -31,7 +31,7 @@ describe('Posts e2e (S8.8)', () => {
     const aliceOrg = await createOrgAndActivate(alice.cookie, `test-${Date.now()}-posts-1`)
 
     const res = await request(getHttpServer())
-      .post('/v1/posts')
+      .post('/api/v1/posts')
       .set('Cookie', aliceOrg.cookie)
       .send({ title: 'Hello', content: 'World' })
       .expect(201)
@@ -57,23 +57,23 @@ describe('Posts e2e (S8.8)', () => {
     const bobOrg = await createOrgAndActivate(bob.cookie, `test-${Date.now()}-posts-2b`)
 
     await request(getHttpServer())
-      .post('/v1/posts')
+      .post('/api/v1/posts')
       .set('Cookie', aliceOrg.cookie)
       .send({ title: 'A-1', content: 'a1' })
       .expect(201)
     await request(getHttpServer())
-      .post('/v1/posts')
+      .post('/api/v1/posts')
       .set('Cookie', aliceOrg.cookie)
       .send({ title: 'A-2', content: 'a2' })
       .expect(201)
     await request(getHttpServer())
-      .post('/v1/posts')
+      .post('/api/v1/posts')
       .set('Cookie', bobOrg.cookie)
       .send({ title: 'B-1', content: 'b1' })
       .expect(201)
 
     const aliceList = await request(getHttpServer())
-      .get('/v1/posts')
+      .get('/api/v1/posts')
       .set('Cookie', aliceOrg.cookie)
       .expect(200)
     expect(aliceList.body.total).toBe(2)
@@ -81,7 +81,7 @@ describe('Posts e2e (S8.8)', () => {
     for (const p of aliceList.body.items) expect(p.organizationId).toBe(aliceOrg.orgId)
 
     const bobList = await request(getHttpServer())
-      .get('/v1/posts')
+      .get('/api/v1/posts')
       .set('Cookie', bobOrg.cookie)
       .expect(200)
     expect(bobList.body.total).toBe(1)
@@ -97,14 +97,14 @@ describe('Posts e2e (S8.8)', () => {
     const carolInOrg = await setActive(carol.cookie, aliceOrg.orgId)
 
     const created = await request(getHttpServer())
-      .post('/v1/posts')
+      .post('/api/v1/posts')
       .set('Cookie', aliceOrg.cookie)
       .send({ title: 'Alice secret', content: 'top' })
       .expect(201)
     const postId = created.body.id
 
     await request(getHttpServer())
-      .patch(`/v1/posts/${postId}`)
+      .patch(`/api/v1/posts/${postId}`)
       .set('Cookie', carolInOrg)
       .send({ title: 'hijacked' })
       .expect(404)
@@ -123,13 +123,13 @@ describe('Posts e2e (S8.8)', () => {
     const carolInOrg = await setActive(carol.cookie, aliceOrg.orgId)
 
     const carolPost = await request(getHttpServer())
-      .post('/v1/posts')
+      .post('/api/v1/posts')
       .set('Cookie', carolInOrg)
       .send({ title: 'Carol original', content: 'c' })
       .expect(201)
 
     await request(getHttpServer())
-      .patch(`/v1/posts/${carolPost.body.id}`)
+      .patch(`/api/v1/posts/${carolPost.body.id}`)
       .set('Cookie', aliceOrg.cookie)
       .send({ title: 'Edited by owner' })
       .expect(200)
@@ -149,13 +149,13 @@ describe('Posts e2e (S8.8)', () => {
     const carolInOrg = await setActive(carol.cookie, aliceOrg.orgId)
 
     const carolPost = await request(getHttpServer())
-      .post('/v1/posts')
+      .post('/api/v1/posts')
       .set('Cookie', carolInOrg)
       .send({ title: 'To delete', content: 'x' })
       .expect(201)
 
     await request(getHttpServer())
-      .delete(`/v1/posts/${carolPost.body.id}`)
+      .delete(`/api/v1/posts/${carolPost.body.id}`)
       .set('Cookie', aliceOrg.cookie)
       .expect(204)
 
@@ -170,7 +170,7 @@ describe('Posts e2e (S8.8)', () => {
     // decorator, @RequiresOrg() at class level would throw 400 instead.)
     const { cookie } = await signUp(makeTestEmail('post-noorg'), 'posts123456789012', 'NoOrg')
     const cleared = await unsetActiveOrg(cookie)
-    await request(getHttpServer()).get('/v1/posts').set('Cookie', cleared).expect(403)
+    await request(getHttpServer()).get('/api/v1/posts').set('Cookie', cleared).expect(403)
   })
 
   it('#7 fail-loud: PostsService called without tenant context → throws', async () => {
