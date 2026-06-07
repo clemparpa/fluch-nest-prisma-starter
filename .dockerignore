@@ -20,5 +20,4 @@
 **/.eslintrc*
 **/biome.json
 docker-compose*.yml
-Dockerfile
 **/prisma/migrations/migration_lock.toml.bak

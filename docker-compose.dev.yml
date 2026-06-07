@@ -15,5 +15,66 @@ services:
       timeout: 5s
       retries: 5
 
+  # One-shot : applique les migrations existantes puis exit.
+  # `prisma migrate dev` (interactif, génération) reste host-side via `pnpm prisma:migrate`.
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: migrate
+    environment:
+      DATABASE_URL: postgresql://fluch:fluch@postgres:5432/fluch_dev
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: 'no'
+
+  # API en hot reload via `nest start --watch`. Le workspace host est monté pour
+  # que les modifs `.ts` soient vues. Les volumes anonymes /repo/node_modules
+  # protègent les node_modules installés dans l'image (sinon le mount host
+  # les écrase).
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: dev
+    command: ['pnpm', '--filter', '@fluch/api', 'dev']
+    working_dir: /repo
+    ports: ['3000:3000']
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://fluch:fluch@postgres:5432/fluch_dev
+      BETTER_AUTH_SECRET: dev-secret-not-for-production-padding-aaaa
+      BETTER_AUTH_URL: http://localhost:3000
+      FRONTEND_URL: http://localhost:5173
+    volumes:
+      - ./apps/api:/repo/apps/api
+      - ./packages:/repo/packages
+      - /repo/node_modules
+      - /repo/apps/api/node_modules
+      - /repo/packages/api-contracts/node_modules
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      postgres: { condition: service_healthy }
+
+  # Vite dev server avec HMR. Proxy `/api` → `api:3000` (réseau Docker interne)
+  # via VITE_PROXY_TARGET (cf. apps/web/vite.config.ts).
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: dev
+    command: ['pnpm', '--filter', '@fluch/web', 'dev', '--host']
+    working_dir: /repo
+    ports: ['5173:5173']
+    environment:
+      VITE_PROXY_TARGET: http://api:3000
+    volumes:
+      - ./apps/web:/repo/apps/web
+      - ./packages:/repo/packages
+      - /repo/node_modules
+      - /repo/apps/web/node_modules
+      - /repo/packages/api-contracts/node_modules
+    depends_on: [api]
+
 volumes:
   pgdata:

@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { allContracts } from '@fluch/api-contracts'
 import { RequestMethod } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
@@ -63,6 +65,25 @@ async function bootstrap() {
   express.get('/docs-json', (_req, res) => {
     res.json(openApiDoc)
   })
+
+  // SPA fallback : refresh sur une route client React Router (/dashboard, etc.)
+  // renvoie index.html. Skip /api/*, /health, /docs*, et tout path avec extension
+  // (assets déjà servis par @nestjs/serve-static avec fallthrough true).
+  const indexHtml = join(__dirname, '..', 'public', 'index.html')
+  if (existsSync(indexHtml)) {
+    express.use((req, res, next) => {
+      if (req.method !== 'GET') return next()
+      if (
+        req.path.startsWith('/api/') ||
+        req.path === '/health' ||
+        req.path.startsWith('/docs') ||
+        req.path.includes('.')
+      ) {
+        return next()
+      }
+      res.sendFile(indexHtml)
+    })
+  }
 
   app.enableShutdownHooks()
 

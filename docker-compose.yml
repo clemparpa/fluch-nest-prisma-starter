@@ -1,0 +1,43 @@
+# Prod-like deployment : pulls latest images from GHCR.
+# Local dev should use `docker-compose.dev.yml` instead (hot reload + builds).
+#
+# Required env vars (cf. .env.docker.example) :
+#   DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL, FRONTEND_URL
+#   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fluch}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fluch}
+      POSTGRES_DB: ${POSTGRES_DB:-fluch}
+    volumes: ['pgdata:/var/lib/postgresql']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-fluch}']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    image: ghcr.io/clemparpa/fluch-migrate:latest
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: 'no'
+
+  app:
+    image: ghcr.io/clemparpa/fluch:latest
+    ports: ['3000:3000']
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL}
+      FRONTEND_URL: ${FRONTEND_URL}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+volumes:
+  pgdata:

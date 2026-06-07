@@ -1,6 +1,8 @@
+import { join } from 'node:path'
 import { Module } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { EventEmitterModule } from '@nestjs/event-emitter'
+import { ServeStaticModule } from '@nestjs/serve-static'
 import { AuthModule } from '@thallesp/nestjs-better-auth'
 import { TsRestModule } from '@ts-rest/nest'
 import { RbacFixturesModule } from './_rbac-fixtures/rbac-fixtures.module'
@@ -25,6 +27,10 @@ import { UsersModule } from './users/users.module'
     UsersModule,
     HealthModule,
     PostsModule,
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'public'),
+      exclude: ['/api/{*splat}', '/health'],
+    }),
     EventEmitterModule.forRoot(),
     TsRestModule.register({ validateResponses: true, isGlobal: true }),
     AuthModule.forRootAsync({
