@@ -22,7 +22,7 @@
     "@fontsource-variable/geist": "^5.2.8",
     "@preact/signals-core": "^1.14.2",
     "@preact/signals-react": "^3.10.1",
-    "better-auth": "^1.6.11",
+    "better-auth": "^1.6.15",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",

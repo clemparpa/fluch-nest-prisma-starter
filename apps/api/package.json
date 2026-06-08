@@ -35,7 +35,7 @@
     "@ts-rest/core": "3.53.0-rc.1",
     "@ts-rest/nest": "3.53.0-rc.1",
     "@ts-rest/open-api": "3.53.0-rc.1",
-    "better-auth": "^1.6.11",
+    "better-auth": "^1.6.15",
     "compression": "^1.7.5",
     "cookie-parser": "^1.4.7",
     "helmet": "^8.1.0",
