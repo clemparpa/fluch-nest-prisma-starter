@@ -48,7 +48,7 @@
     "@fluch/tsconfig": "workspace:*",
     "@nestjs/cli": "^11.0.0",
     "@nestjs/testing": "^11.1.23",
-    "@swc/core": "^1.15.33",
+    "@swc/core": "^1.15.41",
     "@testcontainers/postgresql": "^12.0.1",
     "@types/compression": "^1.8.1",
     "@types/cookie-parser": "^1.4.10",
