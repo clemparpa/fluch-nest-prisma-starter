@@ -287,8 +287,8 @@ importers:
         specifier: ^4.1.6
         version: 4.1.8(vitest@4.1.8(vite@8.0.16))
       happy-dom:
-        specifier: ^20.9.0
-        version: 20.10.1
+        specifier: ^20.10.6
+        version: 20.10.6
       shadcn:
         specifier: ^4.7.0
         version: 4.10.0
@@ -3175,8 +3175,8 @@ packages:
     resolution: {integrity: sha512-cQOsSMS/IrDz82PVyRDvf/Q1F/bRbBVjJlh+xYOkI1qw2bWRvWGiWc+m2O0d6l4Bt1fyY+8kzJ8JFWGJqNeDBg==}
     engines: {node: ^12.22.0 || ^14.16.0 || ^16.0.0 || >=17.0.0}
 
-  happy-dom@20.10.1:
-    resolution: {integrity: sha512-awPoqPjx8CgjapJllyDlgzgVHjBExcitKK5ZJkxwhQJyQpHFkyS2bEcqCm7IeW20cQvuCI0cz2Ifq79CJKqtiw==}
+  happy-dom@20.10.6:
+    resolution: {integrity: sha512-6QD0ilzDDt93tX44y8tbmZdAcdTRYDhUP+Asgi6pC8Pp5IA3cvaZGyoVN/EGtlq9ziT65iPuBBn3ASLr6hCgVw==}
     engines: {node: '>=20.0.0'}
 
   has-flag@4.0.0:
@@ -4639,6 +4639,7 @@ packages:
   tsconfck@3.1.6:
     resolution: {integrity: sha512-ks6Vjr/jEw0P1gmOVwutM3B7fWxoWBL2KRDb1JfqGVawBmO5UsvmWOQFGHBPl5yxYz4eERr19E6L7NMv+Fej4w==}
     engines: {node: ^18 || >=20}
+    deprecated: unmaintained
     hasBin: true
 
   tsconfig-paths-webpack-plugin@4.2.0:
@@ -6533,7 +6534,7 @@ snapshots:
 
   '@types/connect@3.4.38':
     dependencies:
-      '@types/node': 22.19.19
+      '@types/node': 25.9.1
 
   '@types/cookie-parser@1.4.10(@types/express@5.0.6)':
     dependencies:
@@ -6543,7 +6544,7 @@ snapshots:
 
   '@types/cors@2.8.19':
     dependencies:
-      '@types/node': 22.19.19
+      '@types/node': 25.9.1
 
   '@types/d3-array@3.2.2': {}
 
@@ -6573,13 +6574,13 @@ snapshots:
 
   '@types/docker-modem@3.0.6':
     dependencies:
-      '@types/node': 22.19.19
+      '@types/node': 25.9.1
       '@types/ssh2': 1.15.5
 
   '@types/dockerode@4.0.1':
     dependencies:
       '@types/docker-modem': 3.0.6
-      '@types/node': 22.19.19
+      '@types/node': 25.9.1
       '@types/ssh2': 1.15.5
 
   '@types/eslint-scope@3.7.7':
@@ -6645,7 +6646,7 @@ snapshots:
 
   '@types/send@1.2.1':
     dependencies:
-      '@types/node': 22.19.19
+      '@types/node': 25.9.1
 
   '@types/serve-static@2.2.0':
     dependencies:
@@ -6654,15 +6655,15 @@ snapshots:
 
   '@types/set-cookie-parser@2.4.10':
     dependencies:
-      '@types/node': 22.19.19
+      '@types/node': 25.9.1
 
   '@types/ssh2-streams@0.1.13':
     dependencies:
-      '@types/node': 22.19.19
+      '@types/node': 25.9.1
 
   '@types/ssh2@0.5.52':
     dependencies:
-      '@types/node': 22.19.19
+      '@types/node': 25.9.1
       '@types/ssh2-streams': 0.1.13
 
   '@types/ssh2@1.15.5':
@@ -6691,7 +6692,7 @@ snapshots:
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 22.19.19
+      '@types/node': 25.9.1
 
   '@vitejs/plugin-react@6.0.2(vite@8.0.16)':
     dependencies:
@@ -7115,7 +7116,7 @@ snapshots:
 
   buffer-image-size@0.6.4:
     dependencies:
-      '@types/node': 22.19.19
+      '@types/node': 25.9.1
 
   buffer@5.7.1:
     dependencies:
@@ -8005,9 +8006,9 @@ snapshots:
 
   graphql@16.14.1: {}
 
-  happy-dom@20.10.1:
+  happy-dom@20.10.6:
     dependencies:
-      '@types/node': 22.19.19
+      '@types/node': 25.9.1
       '@types/whatwg-mimetype': 3.0.2
       '@types/ws': 8.18.1
       buffer-image-size: 0.6.4
@@ -8178,7 +8179,7 @@ snapshots:
 
   jest-worker@27.5.1:
     dependencies:
-      '@types/node': 22.19.19
+      '@types/node': 25.9.1
       merge-stream: 2.0.0
       supports-color: 8.1.1
 
@@ -8793,7 +8794,7 @@ snapshots:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.1
-      '@types/node': 22.19.19
+      '@types/node': 25.9.1
       long: 5.3.2
 
   proxy-addr@2.0.7:
